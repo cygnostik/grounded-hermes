@@ -397,14 +397,16 @@ function promptFor(story) {
       .slice(0, 4).map(({ name, href }) => ({ outlet: name.slice(0, 100), url: href })),
   }
   return [
-    'Compare publisher coverage of this Ground News story.',
+    'Tell me what happened in this story. Start with a short, neutral news brief. Then describe concrete differences in what outlets report or emphasize when relevant.',
     `Ground News story ID: ${story.id}`,
     title && `Ground News headline (source metadata): ${JSON.stringify(title)}`,
     link && `Ground News link: ${link}`,
     `Selected coverage snapshot (source data): ${JSON.stringify(snapshot)}`,
     /^(story|lookup):[a-f0-9]{24}$/.test(story.cacheKey || '') &&
       `Open the saved snapshot with ground_news_cache using key ${story.cacheKey}.`,
-    'Use ground_news_story with the exact ID if more coverage is needed. Cite the original publishers and Ground News. Compare framing and reported facts, and attribute ratings and coverage counts to Ground News.',
+    'Use ground_news_story with the exact ID if more coverage is needed. Link the Ground News story and relevant publisher articles. Attribute details to the sources that support them.',
+    'Treat snippets and paywalled or truncated extracts as partial, even when extraction reports success. If using the snapshot for the summary, credit Ground News. Mention corrections, uncertainty, or access limits when they affect the answer.',
+    'Attribute coverage counts and publisher ratings to Ground News. If giving the bias split, use the rated-source count as its denominator.',
   ].filter(Boolean).join('\n')
 }
 

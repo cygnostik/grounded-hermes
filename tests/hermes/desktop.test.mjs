@@ -57,6 +57,7 @@ test('preloads the identified story only after the new composer mounts', async (
   }
   assert.equal(await preloadChat(host, story, () => true, noDelay), 'ready')
   assert.deepEqual(writes, ['newChat', promptFor(story), promptFor(story)])
+  assert.match(writes[1], /^Tell me what happened in this story\. Start with a short, neutral news brief\./)
   assert.match(writes[1], /Ground News story ID: budget_01/)
   assert.match(writes[1], /Budget talks resume/)
 })
