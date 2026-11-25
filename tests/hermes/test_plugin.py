@@ -131,6 +131,34 @@ class PluginTest(unittest.TestCase):
         self.assertEqual(result["reads"][0]["origin"], "cache")
         self.assertEqual(result["data"]["searchResults"][0]["id"], self.story["id"])
 
+    def test_wire_tool_counts_one_report_republished_by_five_outlets(self):
+        slug = self.story["slug"]
+        url = cache_client.SITE_BASE + "/article/" + slug
+        articles = [{
+            "url": f"https://publisher-{index}.example/copy",
+            "sourceInfo": {"id": f"outlet-{index}", "name": f"Outlet {index}"},
+            "wireStoryId": "same-wire",
+            "title": "A shared wire report",
+        } for index in range(5)]
+        duplicate = {**articles[0], "url": "https://www.publisher-0.example/another-edition", "sourceInfo": {}}
+        untagged = {"url": "https://other.example/story", "sourceInfo": {"id": "other"}}
+        self.seed("story-publishers", slug, url, {
+            "id": self.story["id"], "sources": [*articles, duplicate, untagged],
+        })
+        args = {"story_id": self.story["id"], "url": url, "policy": "cache_only"}
+        tool = self.tool("wire_reports", **args)
+        self.assertEqual(tool["command"], "wire_reports")
+        self.assertEqual(tool["reads"][0]["origin"], "cache")
+        data = tool["data"]
+        self.assertEqual(data["sharedReportCount"], 1)
+        self.assertEqual(data["wireReports"][0]["outletCount"], 5)
+        self.assertEqual(data["wireReports"][0]["articleCount"], 6)
+        self.assertEqual(data["unclassifiedArticleCount"], 1)
+        self.assertIn("one underlying report", data["countingNote"])
+        self.assertEqual(self.read("paywalls", **args)["data"]["wireReports"], data["wireReports"])
+        error = self.tool("wire_reports", **{**args, "story_id": "different"})["error"]
+        self.assertEqual(error["kind"], "no_match")
+
     def test_cache_misses_and_input_failures_are_actionable(self):
         self.assertEqual(self.read("cache")["data"]["entries"], [])
         self.assertEqual(self.read("story", story_id="missing", policy="cache_only")["error"]["kind"], "cache_miss")

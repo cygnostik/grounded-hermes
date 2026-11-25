@@ -181,6 +181,52 @@ def story_publisher_labels(raw):
     return {**page, "sources": list(articles.values())[:60]}
 
 
+def wire_report_summary(sources):
+    groups = {}
+    unclassified = 0
+    for article in sources:
+        wire_id = article.get("wireStoryId")
+        if wire_id:
+            groups.setdefault(wire_id, []).append(article)
+        else:
+            unclassified += 1
+
+    def hostname(article):
+        try:
+            return (urlsplit(article["url"]).hostname or "").removeprefix("www.")
+        except ValueError:
+            return ""
+
+    reports = []
+    for wire_id, articles in groups.items():
+        identified = [article for article in articles if wire_story_id(article["sourceInfo"].get("id"))]
+        identified_hosts = {hostname(article) for article in identified}
+        fallback_hosts = {hostname(article) for article in articles} - identified_hosts - {""}
+        outlet_count = len({article["sourceInfo"]["id"] for article in identified}) + len(fallback_hosts)
+        if outlet_count < 2:
+            continue
+        origin = next((article for article in articles if article.get("isOriginatingWireSrc")), {})
+        title = origin.get("title") or next((article["title"] for article in articles if article.get("title")), None)
+        reports.append({
+            "wireStoryId": wire_id,
+            "title": title,
+            "outletCount": outlet_count,
+            "articleCount": len(articles),
+            "articles": [{
+                "url": article["url"],
+                "outlet": article["sourceInfo"].get("name") or hostname(article),
+                **({"isOriginatingWireSrc": True} if article.get("isOriginatingWireSrc") else {}),
+            } for article in articles],
+        })
+    reports.sort(key=lambda report: -report["outletCount"])
+    return {
+        "wireReports": reports,
+        "sharedReportCount": len(reports),
+        "listedArticleCount": len(sources),
+        "unclassifiedArticleCount": unclassified,
+    }
+
+
 def lookup(client, url):
     parsed = urlsplit(url)
     if parsed.hostname in {"ground.news", "www.ground.news"}:
@@ -396,7 +442,7 @@ def run_read(client, args):
                            service="site", parse=story_publisher_labels)
         if page["id"] != args.story_id:
             raise GroundError("no_match", "The Ground News page resolved to a different story.")
-        return page
+        return {**page, **wire_report_summary(page["sources"])}
     if args.command == "story":
         return story(client, args)
     if args.command == "extension":

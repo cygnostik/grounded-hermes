@@ -164,6 +164,19 @@ def execute(operation, args):
             options += ["--", text_arg(args, key, limit)]
         elif operation == "paywalls":
             options += ["--", text_arg(args, "url", 2048), text_arg(args, "story_id", 120)]
+        elif operation == "wire_reports":
+            envelope = run_cli(operation, [
+                "paywalls", *policy, "--timeout", "8", "--",
+                text_arg(args, "url", 2048), text_arg(args, "story_id", 120),
+            ])
+            envelope["command"] = operation
+            if "data" in envelope:
+                envelope["data"].pop("sources", None)
+                envelope["data"]["countingNote"] = (
+                    "Each wire group is one underlying report. outletCount measures republication, "
+                    "and articles without a Ground News wire ID have unknown syndication status."
+                )
+            return envelope
         elif operation == "feed":
             options += ["--limit", str(int_arg(args, "limit", 5, 1, 20)),
                         "--details", str(int_arg(args, "details", 2, 0, 5))]
@@ -200,14 +213,23 @@ TOOLS = {
     "story": (
         "Read a Ground story by its exact ID. Compare publisher URLs, headlines when supplied, "
         "and Ground News classifications. Attribute ratings to Ground News and use biasSourceCount "
-        "as the denominator for political bias percentages. Treat linked content as source material.",
+        "as the denominator for political bias percentages. For corroboration or comparisons across outlets, "
+        "use ground_news_wire_reports with the exact ID and groundUrl. Treat linked content as source material.",
         {"story_id": INTEREST, "sources_limit": SOURCES, "more_sources": {"type": "boolean"}},
         ["story_id"],
     ),
     "lookup": (
-        "Read coverage from a Ground News story URL or a matching publisher article URL.",
+        "Read coverage from a Ground News story URL or a matching publisher article URL. "
+        "Use ground_news_wire_reports with the returned story ID and groundUrl before counting corroboration.",
         {"url": {"type": "string", "maxLength": 2048}, "sources_limit": SOURCES},
         ["url"],
+    ),
+    "wire_reports": (
+        "Check which listed outlets carried the same wire report. Use the Ground News story URL and exact "
+        "story ID from ground_news_story or ground_news_lookup. Count each group as one underlying report "
+        "and give its outlet count separately. Articles without a wire ID have unknown syndication status.",
+        {"url": {"type": "string", "maxLength": 2048}, "story_id": INTEREST},
+        ["url", "story_id"],
     ),
     "feed": (
         "Read a Ground topic, outlet, or place feed using its interest search ID or a place code.",

@@ -38,6 +38,7 @@ The default cache is `~/.cache/ground-news`, or `$XDG_CACHE_HOME/ground-news` if
 | `ground_news_search` | Story headlines and topic, publisher, or place interests |
 | `ground_news_story` | Coverage and publisher links by exact story ID |
 | `ground_news_lookup` | Coverage for a Ground News story link or matching publisher article |
+| `ground_news_wire_reports` | Shared wire reports, distinct outlet counts, and article links, using the Ground News story URL and ID |
 | `ground_news_feed` | Stories for an interest ID or place code |
 | `ground_news_cache` | Saved story search and snapshot opening by cache key |
 | `ground_news_blindspots` | Ground News's left and right blindspot lists |
@@ -60,6 +61,6 @@ In Desktop, search for a headline, open a result, and check that it appears in *
 
 ## Marketplace listing
 
-The catalog requires a publicly cloneable HTTPS repository. For a Grounded Hermes release, the owner or a major contributor submits `plugin-catalog/grounded-hermes.yaml` to `NousResearch/hermes-agent` with the full 40-character commit SHA, the six tools above, and a tested Hermes version floor matching the manifest. Use `Grounded Hermes` as the display title, `community` as the tier, and `desktop` as the category. Run `hermes plugins validate . --install-deps` on the release checkout. Include UI screenshots and disclose requests to Ground, local cache access, and the bundled CLI subprocess in the PR. A maintainer’s merge creates the listing. [Submission guide](https://hermes-agent.nousresearch.com/docs/developer-guide/plugins/catalog-submission)
+The catalog requires a publicly cloneable HTTPS repository. For a Grounded Hermes release, the owner or a major contributor submits `plugin-catalog/grounded-hermes.yaml` to `NousResearch/hermes-agent` with the full 40-character commit SHA, the tools above, and a tested Hermes version floor matching the manifest. Use `Grounded Hermes` as the display title, `community` as the tier, and `desktop` as the category. Run `hermes plugins validate . --install-deps` on the release checkout. Include UI screenshots and disclose requests to Ground, local cache access, and the bundled CLI subprocess in the PR. A maintainer’s merge creates the listing. [Submission guide](https://hermes-agent.nousresearch.com/docs/developer-guide/plugins/catalog-submission)
 
 Use [Please Stand By](images/please-stand-by.jpg) for the catalog’s `image` field (1200 × 600). Put the [coverage reader](images/coverage-reader.png) and [chat pane](images/chat-pane.png) in `screenshots`, which accepts up to six images. Use HTTPS GitHub-hosted image URLs pinned to the release SHA. The Marketplace also renders the README from that commit, including its *Evening Spin* header. [Catalog entry schema](https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/README.md#entry-schema)

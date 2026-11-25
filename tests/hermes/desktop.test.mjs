@@ -19,7 +19,7 @@ await module.link(specifier => {
   })
 })
 await module.evaluate()
-const { default: plugin, makeReader, preloadChat, promptFor, sharedWireReports, storyRequest, validUrl } = module.namespace
+const { default: plugin, makeReader, preloadChat, promptFor, storyRequest, validUrl } = module.namespace
 
 const story = {
   id: 'budget_01', title: 'Budget <b>talks</b> resume',
@@ -163,17 +163,9 @@ test('shares the paywall preference across reader views and restores it from Des
   assert.equal(makeReader(ctx).hidePaywalled(), false)
 })
 
-test('counts outlets separately from URLs when Ground groups articles by wire report', () => {
-  const reports = sharedWireReports([
-    { wireId: 'wire-1', publisherId: 'agency', href: 'https://wire.example/story' },
-    { wireId: 'wire-1', publisherId: 'agency', href: 'https://wire.example/update' },
-    { wireId: 'wire-1', href: 'https://www.wire.example/another-edition' },
-    { wireId: 'wire-1', href: 'https://publisher.example/copy' },
-    { wireId: 'wire-2', href: 'https://publisher.example/one' },
-    { wireId: 'wire-2', href: 'https://www.publisher.example/two' },
-    { href: 'https://third.example/untagged' },
-  ])
-  assert.deepEqual(reports.map(({ id, outletCount, articles }) => [id, outletCount, articles.length]), [
-    ['wire-1', 2, 4],
-  ])
+test('chat requests wire evidence even before the reader has loaded it', () => {
+  assert.match(promptFor(story), /use ground_news_wire_reports with this story ID and Ground News link/)
+  assert.match(promptFor(story), /each shared wire group as one underlying report/)
+  const draft = promptFor({ ...story, wireReports: [{ title: 'Wire headline', outletCount: 5, articleCount: 6 }] })
+  assert.match(draft, /"wireReports":\[\{"title":"Wire headline","outletCount":5,"articleCount":6\}\]/)
 })
