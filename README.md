@@ -33,6 +33,10 @@ The link picks up future pulls. Open a new Codex chat to discover the skill. The
 
 Install the repository as a unified Hermes plugin. The reader and agent share the same local cache with the CLI when they run under the same user and cache directory. Select **Grounded News** in the Desktop sidebar to search, explore a story's coverage, inspect original publisher links, or preload the story in a fresh chat. The right pane keeps recently cached stories within reach during conversations. [Hermes setup and testing](docs/hermes.md)
 
+![The Hermes coverage reader showing a story, rated-source split, factuality, ownership, and chat handoff](docs/images/coverage-reader.png)
+
+[View the compact reader beside a Hermes chat](docs/images/chat-pane.png).
+
 For a map of selected stories, the [OSINT Map integration](integrations/osint-map/README.md) exports a local digest for the Operator feeds layer.
 
 ## Run the tests
