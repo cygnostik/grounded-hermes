@@ -19,6 +19,7 @@ const RATING_LABELS = {
   mediaConglomerate: 'Media conglomerate', billionaire: 'Billionaire', government: 'Government',
   independent: 'Independent', other: 'Other', uncategorized: 'Uncategorized', corporation: 'Corporation',
 }
+const FACTUALITY_LEVELS = ['veryHigh', 'high', 'mixed', 'low', 'veryLow']
 
 const css = `
 .gn {
@@ -364,10 +365,15 @@ function Ratings({ title, values }) {
 function originalSource(source) {
   const info = source.sourceInfo || {}
   const href = validUrl(source.url)
+  const owners = (Array.isArray(info.owners) ? info.owners : [])
+    .filter(owner => owner && typeof owner === 'object')
+    .map(owner => ({ name: textOnly(owner.name), category: textOnly(owner.category) }))
+    .filter(owner => owner.name || owner.category)
   return {
     href, name: textOnly(info.name) || (href ? new URL(href).hostname : 'Unknown publisher'),
     title: textOnly(source.title || source.articleTitle || source.headline),
     bias: BIASES[info.bias] || 'Unrated', date: day(source.date), paywall: source.paywall,
+    factuality: FACTUALITY_LEVELS.includes(info.factuality) ? info.factuality : null, owners,
   }
 }
 
@@ -383,25 +389,41 @@ function publisherArticles(story, labeledSources = []) {
     if (!article.href) continue
     const existing = articles.get(article.href)
     articles.set(article.href, existing ? {
-      ...existing, title: existing.title || article.title, paywall: article.paywall,
+      ...existing, title: existing.title || article.title, paywall: article.paywall ?? existing.paywall,
+      factuality: article.factuality || existing.factuality,
+      owners: article.owners.length ? article.owners : existing.owners,
     } : article)
   }
   return [...articles.values()]
 }
 
-function Publishers({ ctx, articles, compact, onOpen, hidePaywalled }) {
-  const [bias, setBias] = useState('All')
-  const types = [...new Set(articles.map(source => source.bias))]
-  const filter = types.includes(bias) ? bias : 'All'
-  const visible = (filter === 'All' ? articles : articles.filter(source => source.bias === filter))
+function publisherRatings(article, dimension) {
+  const values = dimension === 'ownership'
+    ? article.owners.map(owner => owner.category).filter(Boolean)
+    : [article[dimension]].filter(Boolean)
+  return values.length ? values : ['unknown']
+}
+
+function ownerLabel({ name, category }) {
+  const label = RATING_LABELS[category] || category
+  return name && label ? `${name} (${label})` : name || label
+}
+
+function Publishers({ ctx, articles, compact, onOpen, hidePaywalled, dimension = 'bias' }) {
+  const [rating, setRating] = useState('All')
+  const types = [...new Set(articles.flatMap(source => publisherRatings(source, dimension)))]
+  const filter = types.includes(rating) ? rating : 'All'
+  const visible = (filter === 'All' ? articles : articles.filter(source => publisherRatings(source, dimension).includes(filter)))
     .slice(0, compact ? 4 : undefined)
 
   return h('section', { className: 'gn-section' },
     h('div', { className: 'gn-line gn-spread' },
       h('h3', { className: 'gn-section-title' }, 'Publisher articles'),
       !compact && types.length > 1 && h('select', {
-        'aria-label': 'Filter publishers by Ground News bias', value: filter, onChange: event => setBias(event.target.value),
-      }, ['All', ...types].map(type => h('option', { key: type, value: type }, type === 'All' ? 'All ratings' : type))),
+        'aria-label': `Filter publishers by Ground News ${dimension}`, value: filter,
+        onChange: event => setRating(event.target.value),
+      }, ['All', ...types].map(type => h('option', { key: type, value: type },
+        type === 'All' ? 'All ratings' : RATING_LABELS[type] || type))),
     ),
     !compact && articles.length > 0 && h('p', { className: 'gn-meta' },
       `${visible.length} of ${articles.length} listed links shown · Ratings by Ground News`),
@@ -412,7 +434,10 @@ function Publishers({ ctx, articles, compact, onOpen, hidePaywalled }) {
         h(Link, { ctx, url: source.href, onOpen }, source.title || source.name),
         h('span', { className: 'gn-meta' },
           [source.title ? source.name : '', source.bias, source.date,
+            source.factuality ? `${RATING_LABELS[source.factuality]} factuality` : dimension === 'factuality' && 'Factuality unknown',
             hidePaywalled && (source.paywall === 'no' ? 'No paywall reported' : 'Paywall unknown')].filter(Boolean).join(' · ')),
+        dimension === 'ownership' && h('span', { className: 'gn-meta' },
+          source.owners.map(ownerLabel).join(' · ') || 'Ownership not reported'),
       ))),
   )
 }
@@ -428,7 +453,9 @@ function ArticleView({ ctx, articles, index, onOpen, onList, hidden }) {
     ),
     h('div', { className: 'gn-detail-top', 'aria-live': 'polite' },
       h('h3', { className: 'gn-section-title' }, article.title || article.name),
-      h('p', { className: 'gn-meta' }, [article.name, article.bias, article.date].filter(Boolean).join(' · ')),
+      h('p', { className: 'gn-meta' }, [article.name, article.bias,
+        article.factuality && `${RATING_LABELS[article.factuality]} factuality`, article.date].filter(Boolean).join(' · ')),
+      article.owners.length > 0 && h('p', { className: 'gn-meta' }, article.owners.map(ownerLabel).join(' · ')),
     ),
     h(Link, { ctx, url: article.href }, 'Open in browser ↗'),
     SandboxedFrame && h(SandboxedFrame, {
@@ -437,10 +464,12 @@ function ArticleView({ ctx, articles, index, onOpen, onList, hidden }) {
   )
 }
 
-function CoverageViews({ ctx, story, articles, initialArticle, hidePaywalled }) {
+function CoverageViews({ ctx, story, articles, initialArticle, hidePaywalled, onPublisherLabels, labels }) {
   const [view, setView] = useState(initialArticle ? 'Articles' : 'Overview')
   const [articleUrl, setArticleUrl] = useState(initialArticle)
   const index = articles.findIndex(article => article.href === articleUrl)
+  const showRatings = view === 'Factuality' || view === 'Ownership'
+  const dimension = showRatings ? view.toLowerCase() : 'bias'
   function openArticle(href) {
     setArticleUrl(href)
     setView('Articles')
@@ -448,13 +477,19 @@ function CoverageViews({ ctx, story, articles, initialArticle, hidePaywalled }) 
   return h('div', { className: 'gn-section' },
     h('nav', { className: 'gn-line gn-views', 'aria-label': 'Story views' },
       COVERAGE_VIEWS.map(name => h(Button, {
-        key: name, main: name === view, 'aria-pressed': name === view, onClick: () => setView(name),
+        key: name, main: name === view, 'aria-pressed': name === view, onClick: () => {
+          setView(name)
+          if (name === 'Factuality' || name === 'Ownership') onPublisherLabels()
+        },
       }, name))),
     (view === 'Overview' || view === 'Bias') && h(Stats, { story }),
     view === 'Factuality' && h(Ratings, { title: 'Publisher factuality · Ground News', values: story.factuality }),
+    showRatings && h(Notices, { state: labels, loading: 'Checking publisher labels…' }),
+    showRatings && !labels.pending && labels.error &&
+      h(Button, { onClick: labels.refresh }, 'Retry publisher labels'),
     view === 'Ownership' && h(Ratings, { title: 'Publisher ownership · Ground News', values: story.ownership }),
-    (view === 'Overview' || view === 'Bias' || (view === 'Articles' && index < 0)) &&
-      h(Publishers, { ctx, articles, onOpen: openArticle, hidePaywalled }),
+    (view === 'Overview' || view === 'Bias' || showRatings || (view === 'Articles' && index < 0)) &&
+      h(Publishers, { key: dimension, ctx, articles, onOpen: openArticle, hidePaywalled, dimension }),
     index >= 0 && h(ArticleView, {
       ctx, articles, index, onOpen: openArticle, onList: () => setArticleUrl(null), hidden: view !== 'Articles',
     }),
@@ -559,12 +594,13 @@ function Coverage({ ctx, reader, scope, target, compact = false, onBack, backLab
   const story = original.expandedCoverage || original
   const lastRead = currentRead || lastStory?.read || target.read || target.cache
   const expansionError = original.expansionError
+  const [loadPublisherLabels, setLoadPublisherLabels] = useState(false)
   const hidePaywalled = useSyncExternalStore(reader.subscribePaywalls, reader.hidePaywalled)
   const groundUrl = validUrl(story.groundUrl)
-  const paywalls = useRead(reader, scope, hidePaywalled && groundUrl && story.id ? 'paywalls' : null,
+  const publisherLabels = useRead(reader, scope, (hidePaywalled || loadPublisherLabels) && groundUrl && story.id ? 'paywalls' : null,
     { url: groundUrl, story_id: story.id })
-  const labels = Array.isArray(paywalls.value?.data?.sources) ? paywalls.value.data.sources : []
-  const allArticles = publisherArticles(story, hidePaywalled ? labels : undefined)
+  const labels = Array.isArray(publisherLabels.value?.data?.sources) ? publisherLabels.value.data.sources : []
+  const allArticles = publisherArticles(story, labels)
   const articles = hidePaywalled
     ? allArticles.filter(article => article.paywall !== 'yes' && article.paywall !== 'sometimes') : allArticles
 
@@ -604,17 +640,19 @@ function Coverage({ ctx, reader, scope, target, compact = false, onBack, backLab
       }, 'More publishers'),
     ),
     hidePaywalled && h('div', { className: 'gn-line gn-section', 'aria-live': 'polite' },
-      h('p', { className: 'gn-meta' }, paywalls.pending ? 'Checking Ground News paywall labels…'
-        : labels.length ? `${allArticles.length - articles.length} hidden · Unlabeled articles stay visible`
+      h('p', { className: 'gn-meta' }, publisherLabels.pending ? 'Checking Ground News paywall labels…'
+        : allArticles.some(article => ['yes', 'sometimes', 'no'].includes(article.paywall))
+          ? `${allArticles.length - articles.length} hidden · Unlabeled articles stay visible`
           : 'Paywall labels unavailable for this story.'),
-      !paywalls.pending && paywalls.error && h(Button, { onClick: paywalls.refresh }, 'Retry paywall labels'),
+      !publisherLabels.pending && publisherLabels.error && h(Button, { onClick: publisherLabels.refresh }, 'Retry paywall labels'),
     ),
     compact
       ? h(Publishers, { ctx, articles, compact: true, hidePaywalled, onOpen: articleUrl => {
         reader.select(scope, { id: story.id, event: story, read: lastRead, articleUrl })
         host.navigate(PATH)
       } })
-      : h(CoverageViews, { ctx, story, articles, initialArticle: target.articleUrl, hidePaywalled }),
+      : h(CoverageViews, { ctx, story, articles, initialArticle: target.articleUrl, hidePaywalled,
+        onPublisherLabels: () => setLoadPublisherLabels(true), labels: publisherLabels }),
   )
 }
 

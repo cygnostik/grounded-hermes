@@ -90,7 +90,9 @@ class Handler(BaseHTTPRequestHandler):
         if path.path == STORY_PAGE:
             return 200, {"Content-Type": "text/html"}, (
                 br'<script>self.__next_f.push([1,"{\"articleId\":\"story-artemis\",'
-                br'\"articleSources\":[{\"url\":\"https://example.org/mission\",\"paywall\":\"yes\"},'
+                br'\"articleSources\":[{\"url\":\"https://example.org/mission\",\"paywall\":\"yes\",'
+                br'\"sourceInfo\":{\"factuality\":\"high\",'
+                br'\"owners\":[{\"name\":\"Example Holdings\",\"category\":\"corporation\"}]}},'
                 br'{\"url\":\"https://example.org/free\",\"paywall\":\"no\"},'
                 br'{\"url\":\"https://example.org/unknown\"}]}"])</script>'
             ), 0
@@ -226,6 +228,11 @@ class GroundNewsCLI(unittest.TestCase):
         self.assertEqual(
             {row["url"]: row["paywall"] for row in result["data"]["sources"]},
             {"https://example.org/mission": "yes", "https://example.org/free": "no"},
+        )
+        self.assertEqual(result["data"]["sources"][0]["sourceInfo"]["factuality"], "high")
+        self.assertEqual(
+            result["data"]["sources"][0]["sourceInfo"]["owners"],
+            [{"name": "Example Holdings", "category": "corporation"}],
         )
         cached = self.run_cli("paywalls", url, STORY["id"], "--cache-only")
         self.assertEqual(cached["data"], result["data"])

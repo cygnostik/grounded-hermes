@@ -8,6 +8,10 @@ A signed-in Pro account showed a personal date range, story and article totals, 
 
 Ground documents its universal paywall preference for Premium and Vantage. Both the story’s sort menu and the account’s source filtering preferences displayed a usable hide-paywall control in the tested Pro session. Its effects and persistence were outside the read-only check. Ground’s public story page independently publishes article-level paywall classifications alongside publisher links. Grounded Hermes uses these labels for its own **Hide paywalls** control. [Ground’s paywall filter](https://help.ground.news/en/articles/3523713)
 
+After upgrading the test account to Premium, **My News Bias** displayed the personal factuality chart. Media Ownership and Civic Lens still showed Vantage prompts. The story page displayed outlet factuality badges, a distribution, and an **All Factuality** menu. Hermes uses outlet ratings and named owners from the public story page. The personal factuality distribution belongs to the signed-in dashboard. [Ground’s rating methodology](https://ground.news/rating-system)
+
+The public story page also exposed outlet locations, individual bias assessments from named reviewers and reference links, article language, and wire-story groupings. Availability varies by outlet and story. These fields are candidates for showing where coverage comes from and which articles share a wire report.
+
 ## Web client
 
 Paths in this table are relative to `https://web-api-cdn.ground.news/api`. Parameters in braces are placeholders. The methods and result names reflect client code and may change between deployments.

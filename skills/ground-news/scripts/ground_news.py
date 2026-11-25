@@ -15,7 +15,7 @@ from ground_news_client import coverage, Cache, Client, GroundError, cache_path,
 KINDS = (
     "search-story", "search-interest", "lookup", "story", "interest",
     "feed", "place", "blindspots", "trending", "editions", "extension-popup", "extension-toolbar", "story-link",
-    "paywalls",
+    "paywalls", "publisher-labels",
 )
 
 
@@ -110,7 +110,7 @@ def ground_story_slug(url):
     return slug
 
 
-def story_paywalls(raw):
+def story_publisher_labels(raw):
     page = story_page_id(raw)
     articles = {}
     decoder = json.JSONDecoder()
@@ -131,16 +131,31 @@ def story_paywalls(raw):
         except ValueError:
             continue
         for source in sources:
-            if not isinstance(source, dict) or source.get("paywall") not in ("yes", "sometimes", "no"):
+            if not isinstance(source, dict):
                 continue
             url = source.get("url")
             if not isinstance(url, str) or not url.startswith(("https://", "http://")):
                 continue
             info = source.get("sourceInfo")
             info = info if isinstance(info, dict) else {}
+            paywall = source.get("paywall")
+            owners = info.get("owners")
+            owners = owners if isinstance(owners, list) else []
+            owners = [
+                {key: owner.get(key) for key in ("name", "category")}
+                for owner in owners if isinstance(owner, dict)
+                and (isinstance(owner.get("name"), str) or isinstance(owner.get("category"), str))
+            ]
+            if paywall not in ("yes", "sometimes", "no") and info.get("factuality") not in (
+                "veryLow", "low", "mixed", "high", "veryHigh",
+            ) and not owners:
+                continue
             articles.setdefault(url, {
-                "url": url, "paywall": source["paywall"], "title": source.get("title"), "date": source.get("date"),
-                "sourceInfo": {key: info.get(key) for key in ("name", "bias")},
+                "url": url, "paywall": paywall, "title": source.get("title"), "date": source.get("date"),
+                "sourceInfo": {
+                    **{key: info.get(key) for key in ("name", "bias", "factuality")},
+                    "owners": owners,
+                },
             })
     return {**page, "sources": list(articles.values())[:60]}
 
@@ -303,7 +318,7 @@ def build_parser():
     cmd.add_argument("url", type=article_url)
     cmd.add_argument("--sources-limit", type=bounded_int(0, 500), default=8)
 
-    cmd = sub.add_parser("paywalls", parents=[common], help="read public paywall labels for a Ground News story")
+    cmd = sub.add_parser("paywalls", parents=[common], help="read public publisher and paywall labels")
     cmd.add_argument("url", type=article_url)
     cmd.add_argument("story_id", type=identifier)
 
@@ -356,8 +371,8 @@ def run_read(client, args):
         return {**data, "event": coverage(event, args.sources_limit) if event else None}
     if args.command == "paywalls":
         slug = ground_story_slug(args.url)
-        page = client.read("paywalls", slug, "/article/" + quote(slug, safe=""), has_id,
-                           service="site", parse=story_paywalls)
+        page = client.read("publisher-labels", slug, "/article/" + quote(slug, safe=""), has_id,
+                           service="site", parse=story_publisher_labels)
         if page["id"] != args.story_id:
             raise GroundError("no_match", "The Ground News page resolved to a different story.")
         return page
