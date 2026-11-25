@@ -1,6 +1,7 @@
 name: grounded-hermes
 version: 0.1.0
-description: Search Ground News on demand, revisit saved stories, and compare publisher coverage.
+description: Compare news coverage in Hermes. See bias, blind spots, publisher ratings, and shared wire reports.
+requires_hermes: ">=0.23.4"
 provides_tools:
   - ground_news_search
   - ground_news_story
