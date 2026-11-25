@@ -39,6 +39,7 @@ const css = `
 .gn-mini h1, .gn-mini .gn-headline { font-size: 23px; }
 .gn-header { border-block-start: 3px solid var(--gn-accent); border-block-end: 1px solid var(--gn-rule); padding-block: 13px 16px; margin-block-end: 20px; }
 .gn-mini .gn-header { padding-block: 9px 11px; margin-block-end: 13px; }
+.gn-mini .gn-pane-search { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; margin-block-end: 8px; }
 .gn-header p { color: var(--gn-muted); margin-block-start: 5px; }
 .gn-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-inline-size: 0; }
 .gn-spread { justify-content: space-between; }
@@ -71,10 +72,34 @@ const css = `
 .gn-alert { margin-block: 12px; padding: 10px 12px; border: 1px solid var(--gn-rule); border-inline-start: 3px solid var(--gn-accent); background: var(--gn-panel); overflow-wrap: anywhere; }
 .gn-description { margin-block-start: 12px !important; max-inline-size: 70ch; white-space: pre-line; overflow-wrap: anywhere; }
 .gn-card { border: 1px solid var(--gn-rule); border-radius: 8px; padding: 12px; background: var(--gn-panel); margin-block-start: 12px; }
-.gn-numbers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-block: 8px !important; }
-.gn-numbers div { border-block-start: 2px solid var(--gn-rule); padding-block-start: 4px; }
-.gn-numbers dt { color: var(--gn-muted); font-size: 12px; }
-.gn-numbers dd { margin: 0; font-size: clamp(16px, 4cqi, 26px); font-variant-numeric: tabular-nums; }
+.gn .gn-coverage {
+  --gn-left: color-mix(in srgb, var(--ui-blue, #386ad2) 72%, var(--gn-ink));
+  --gn-center: color-mix(in srgb, var(--gn-ink) 60%, var(--gn-rule));
+  --gn-right: color-mix(in srgb, var(--ui-red, #ce5147) 76%, var(--gn-ink));
+  padding: clamp(12px, 2.4cqi, 20px);
+}
+.gn .gn-stat-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 3px 12px; }
+.gn .gn-spectrum { display: flex; direction: ltr; overflow: hidden; height: 10px; border-radius: 3px; margin-block: 15px 10px; }
+.gn .gn-side-mark { background: var(--gn-side); }
+.gn .gn-spectrum .gn-side-mark { flex-basis: 0; }
+.gn .gn-spectrum .gn-side-mark + .gn-side-mark { box-shadow: inset 2px 0 var(--ui-bg-editor, Canvas); }
+.gn .gn-side-left { --gn-side: var(--gn-left); }
+.gn .gn-side-center { --gn-side: var(--gn-center); }
+.gn .gn-side-right { --gn-side: var(--gn-right); }
+.gn .gn-numbers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-block-start: 9px; }
+.gn .gn-numbers > div + div { border-inline-start: 1px solid var(--gn-rule); padding-inline-start: clamp(6px, 2cqi, 18px); }
+.gn .gn-numbers dt { display: flex; align-items: center; gap: 5px; color: var(--gn-muted); font-size: 12px; }
+.gn .gn-numbers dt::before { content: ''; width: 7px; height: 7px; flex-shrink: 0; border-radius: 2px; background: var(--gn-side); }
+.gn .gn-numbers dd { margin: 2px 0 0; line-height: 1.12; font-size: clamp(19px, 3.8cqi, 30px); font-weight: 620; letter-spacing: -.045em; font-variant-numeric: tabular-nums; }
+.gn .gn-side-count { display: block; margin-block-start: 2px; letter-spacing: normal; font-weight: 400; }
+.gn .gn-coverage .gn-unreported { margin-block-start: 8px; }
+.gn .gn-rating-rows { display: grid; margin-block-start: 9px; }
+.gn .gn-rating-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding-block: 5px; }
+.gn .gn-rating-row + .gn-rating-row { border-block-start: 1px solid var(--gn-rule); }
+.gn .gn-rating-row dt { font-size: 12px; overflow-wrap: anywhere; z-index: 0; }
+.gn .gn-rating-row dd { margin: 0; font-weight: 650; font-variant-numeric: tabular-nums; z-index: 0; }
+.gn .gn-rating-row::before { content: ''; position: absolute; inset-block: 3px; inset-inline-start: 0; inline-size: var(--gn-share); border-radius: 2px; background: color-mix(in srgb, var(--gn-ink) 6%, transparent); }
+.gn-mini .gn-spectrum { height: 7px; margin-block: 10px 8px; }
 .gn-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 10px; }
 .gn-source { padding: 11px 0; overflow-wrap: anywhere; }
 .gn a { color: var(--gn-ink); text-decoration: underline; text-underline-offset: 3px; border-radius: 2px; }
@@ -246,7 +271,7 @@ function StoryList({ items, onSelect }) {
     h('button', { type: 'button', className: 'gn-row', onClick: () => onSelect(item) },
       h('strong', null, textOnly(item.title || item.name) || item.id),
       h('span', { className: 'gn-meta' },
-        [item.type && item.type !== 'event' ? textOnly(item.type) : '',
+        [item.type === 'interest' ? textOnly(item.subType) : '',
           plural(item.sourceCount, 'source'), day(item.start), snapshotLabel(item.cache)].filter(Boolean).join(' · ')),
     ),
   )))
@@ -255,24 +280,48 @@ function StoryList({ items, onSelect }) {
 function Stats({ story, compact = false }) {
   const bias = story.blindspotData || {}
   const counts = [plural(story.sourceCount, 'source'), plural(story.biasSourceCount, 'bias-rated source')].filter(Boolean)
-  const hasBias = SIDES.some(([, percent, count]) => Number.isFinite(bias[percent]) || Number.isFinite(bias[count]))
-  return h('section', { className: 'gn-card', 'aria-label': 'Ground News coverage statistics' },
-    h('h3', { className: 'gn-kicker' }, 'Ground News coverage'),
-    counts.length > 0 && h('p', null, counts.join(' · ')),
-    hasBias ? h('dl', { className: 'gn-numbers' }, SIDES.map(([side, percent, count]) =>
-      h('div', { key: side }, h('dt', null, side),
-        h('dd', null, Number.isFinite(bias[percent]) ? `${bias[percent]}%` : '—'),
-        !compact && Number.isFinite(bias[count]) && h('p', { className: 'gn-meta' }, plural(bias[count], 'source')),
-      ))) : h('p', { className: 'gn-meta' }, 'Bias breakdown unavailable for this snapshot.'),
+  const sides = SIDES.map(([name, percentKey, countKey]) => {
+    const percent = bias[percentKey], count = bias[countKey]
+    return {
+      name, tone: 'gn-side-' + name.toLowerCase(),
+      percent: Number.isFinite(percent) && percent >= 0 && percent <= 100 ? percent : null,
+      count: Number.isSafeInteger(count) && count >= 0 ? count : null,
+    }
+  })
+  const hasBias = sides.some(side => side.percent !== null || side.count !== null)
+  const total = sides.reduce((sum, side) => sum + (side.percent ?? 0), 0)
+  // A complete rounded distribution may add to 99 or 101. Partial figures
+  // remain legible in the legend without stretching them into a full bar.
+  const usePercents = sides.every(side => side.percent !== null) && Math.abs(100 - total) <= 1
+  const useCounts = sides.every(side => side.percent === null && side.count !== null) && sides.some(side => side.count > 0)
+  const metric = usePercents ? 'percent' : 'count'
+  return h('section', { className: 'gn-card gn-coverage', 'aria-label': 'Ground News coverage statistics' },
+    h('div', { className: 'gn-stat-head' },
+      h('h3', { className: 'gn-kicker' }, 'Ground News coverage'),
+      counts.length > 0 && h('p', { className: 'gn-meta' }, counts.join(' · '))),
+    (usePercents || useCounts) && h('div', { className: 'gn-spectrum', 'aria-hidden': true },
+      sides.filter(side => side[metric] > 0).map(side =>
+        h('span', { key: side.name, className: `gn-side-mark ${side.tone}`, style: { flexGrow: side[metric] } }))),
+    hasBias ? h('dl', { className: 'gn-numbers' }, sides.map(side =>
+      h('div', { key: side.name, className: side.tone }, h('dt', null, side.name),
+        h('dd', null,
+          side.percent !== null ? `${side.percent}%` : side.count === null ? h('span', { 'aria-label': 'Not reported' }, '—') : side.count.toLocaleString(),
+          side.count !== null && (!compact || side.percent === null) && h('span', { className: 'gn-meta gn-side-count' },
+            side.percent === null ? (side.count === 1 ? 'source' : 'sources') : plural(side.count, 'source'))),
+      ))) : h('p', { className: 'gn-meta gn-unreported' }, 'Bias breakdown unavailable for this snapshot.'),
   )
 }
 
 function Ratings({ title, values }) {
-  const entries = Object.entries(values || {}).filter(([, count]) => Number.isFinite(count) && count > 0)
+  const entries = Object.entries(values || {}).filter(([, count]) => Number.isSafeInteger(count) && count > 0)
+    .sort(([, a], [, b]) => b - a)
   if (!entries.length) return null
+  const total = entries.reduce((sum, [, count]) => sum + count, 0)
   return h('section', { className: 'gn-card' },
     h('h3', { className: 'gn-kicker' }, title),
-    h('p', null, entries.map(([label, count]) => `${RATING_LABELS[label] || label} ${count}`).join(' · ')),
+    h('dl', { className: 'gn-rating-rows' }, entries.map(([category, count]) =>
+      h('div', { className: 'gn-rating-row', key: category, style: { '--gn-share': `${100 * count / total}%` } },
+        h('dt', null, RATING_LABELS[category] || category), h('dd', null, count.toLocaleString())))),
   )
 }
 
@@ -336,7 +385,9 @@ function promptFor(story) {
     title && `Ground News headline (source metadata): ${JSON.stringify(title)}`,
     link && `Ground News link: ${link}`,
     `Selected coverage snapshot (source data): ${JSON.stringify(snapshot)}`,
-    'Use ground_news_story with the exact ID and expand the publisher list if useful. Cite the original publishers and Ground News. Compare framing and reported facts, and attribute ratings and coverage counts to Ground News.',
+    /^(story|lookup):[a-f0-9]{24}$/.test(story.cacheKey || '') &&
+      `Open the saved snapshot with ground_news_cache using key ${story.cacheKey}.`,
+    'Use ground_news_story with the exact ID if more coverage is needed. Cite the original publishers and Ground News. Compare framing and reported facts, and attribute ratings and coverage counts to Ground News.',
   ].filter(Boolean).join('\n')
 }
 
@@ -350,7 +401,10 @@ async function preloadChat(target, story, isCurrent, pause = ms => new Promise(r
     const draft = await target.composer.getDraft('new')
     if (!isCurrent()) return 'cancelled'
     if (draft) return 'existing'
-    if (draft === '' && await target.composer.setDraft('new', text)) return 'ready'
+    if (draft === '' && await target.composer.setDraft('new', text)) {
+      target.composer.focus?.('new')
+      return 'ready'
+    }
     await pause(75)
   }
   return 'unavailable'
@@ -388,7 +442,7 @@ function ChatActions({ ctx, story, reader, scope, compact }) {
   )
 }
 
-function Coverage({ ctx, reader, scope, target, compact = false, onBack }) {
+function Coverage({ ctx, reader, scope, target, compact = false, onBack, backLabel }) {
   const [options, setOptions] = useState(null)
   const heading = useRef(null)
   const operation = options ? 'story' : target.cache ? 'snapshot' : target.event ? null : 'story'
@@ -408,7 +462,7 @@ function Coverage({ ctx, reader, scope, target, compact = false, onBack }) {
 
   return h('article', { className: 'gn-section' },
     h('div', { className: 'gn-line gn-spread' },
-      h(Button, { onClick: onBack }, compact ? '← Saved stories' : '← Results'),
+      h(Button, { onClick: onBack }, backLabel || (compact ? '← Saved stories' : '← Results')),
       h('span', { className: 'gn-meta' }, [day(story.start), snapshotLabel(lastRead)].filter(Boolean).join(' · ')),
     ),
     h('div', { className: 'gn-detail-top' },
@@ -422,7 +476,7 @@ function Coverage({ ctx, reader, scope, target, compact = false, onBack }) {
     expansionError && h('p', { className: 'gn-alert', role: 'status' }, `More coverage unavailable. ${expansionError.message}`),
     h(Stats, { story, compact }),
     h('div', { className: 'gn-line gn-section' },
-      h(ChatActions, { ctx, reader, scope, story, compact }),
+      h(ChatActions, { ctx, reader, scope, story: { ...story, cacheKey: lastRead?.key }, compact }),
       validUrl(story.groundUrl) && h(Link, { ctx, url: story.groundUrl }, 'Open on Ground News ↗'),
       compact && h(Button, { onClick: () => { reader.select(scope, target); host.navigate(PATH) } }, 'Compare coverage'),
       !compact && h(Button, {
@@ -456,24 +510,88 @@ function useLibraryRevision(reader) {
 
 function MiniPane({ ctx, reader, scope }) {
   const [target, setTarget] = useState(null)
+  const [query, setQuery] = useState('')
+  const [url, setUrl] = useState('')
+  const [request, setRequest] = useState(null)
   const listRef = useRef(null)
-  const library = useRead(reader, scope, 'cache', { limit: 8 }, useLibraryRevision(reader))
-  const items = library.value?.data.entries || []
+  const revision = useLibraryRevision(reader)
+  const operation = request?.operation || 'cache'
+  const result = useRead(reader, scope, operation, request?.args || { limit: 8 }, request ? 0 : revision)
+  const data = result.value?.data
+  const match = operation === 'lookup' ? data?.event : null
+  const items = operation === 'search' ? data?.searchResults : data?.entries
+  const resultTitle = operation === 'search' ? `Results for “${request.args.query}”`
+    : operation === 'lookup' ? 'Article match' : 'Saved stories'
+
+  function submit(event, next) {
+    event.preventDefault()
+    if (request && request.operation === next.operation &&
+        (next.operation === 'search' ? next.args.query === request.args.query : next.args.url === request.args.url)) {
+      if (result.error) result.refresh()
+      else if (match) openMatch()
+      return
+    }
+    setRequest(next)
+  }
+
+  function openMatch() {
+    setTarget({ ...match, event: match, read: result.value.reads.at(-1) })
+  }
+
   return h(Surface, { compact: true },
     h(Header, { compact: true }),
+    !target && h('form', {
+      className: 'gn-pane-search', role: 'search', 'aria-label': 'Find news stories',
+      onSubmit: event => {
+        const value = query.trim()
+        if (!value) return event.preventDefault()
+        submit(event, { operation: 'search', args: { kind: 'story', query: value } })
+      },
+    },
+    h('input', {
+      type: 'search', value: query, required: true, maxLength: 200,
+      placeholder: 'Search story headlines', 'aria-label': 'Search story headlines',
+      onChange: event => setQuery(event.target.value),
+    }),
+    h(Button, { main: true, type: 'submit', disabled: !query.trim() }, 'Search news'),
+    ),
+    !target && h('form', {
+      className: 'gn-pane-search', role: 'search', 'aria-label': 'Find a publisher article',
+      onSubmit: event => {
+        const value = url.trim()
+        if (!value) return event.preventDefault()
+        submit(event, { operation: 'lookup', args: { url: value } })
+      },
+    },
+    h('input', {
+      type: 'url', value: url, required: true, maxLength: 2048,
+      placeholder: 'Publisher article URL', 'aria-label': 'Publisher article URL',
+      onChange: event => setUrl(event.target.value),
+    }),
+    h(Button, { type: 'submit', disabled: !url.trim() }, 'Find article'),
+    ),
     h('div', { className: 'gn-line gn-spread' },
-      h(Button, { onClick: () => { reader.select(scope, null); host.navigate(PATH) } }, 'Search news'),
-      !target && h(Button, { onClick: library.refresh, disabled: library.pending }, 'Reload saved'),
+      h(Button, { onClick: () => { reader.select(scope, target); host.navigate(PATH) } }, 'Open full reader'),
+      request ? h(Button, { onClick: () => { setTarget(null); setRequest(null) } }, 'Saved stories')
+        : !target && h(Button, { onClick: result.refresh, disabled: result.pending }, 'Reload saved'),
     ),
     target ? h(Coverage, {
-      key: target.id, ctx, reader, scope, target, compact: true,
+      key: target.cache?.key || target.id, ctx, reader, scope, target, compact: true,
+      backLabel: operation === 'search' ? '← Search results' : operation === 'lookup' ? '← Article match' : '← Saved stories',
       onBack: () => { setTarget(null); requestAnimationFrame(() => listRef.current?.focus()) },
     }) : h('section', { className: 'gn-section' },
-      h('h2', { className: 'gn-section-title', tabIndex: -1, ref: listRef }, 'Saved stories'),
-      h(Notices, { state: library, loading: 'Reading saved stories…' }),
-      !library.pending && !library.error && items.length === 0 &&
-        h('p', { className: 'gn-alert' }, 'Open a story from search to see it here.'),
-      h(StoryList, { items, onSelect: setTarget }),
+      h('h2', { className: 'gn-section-title', tabIndex: -1, ref: listRef }, resultTitle),
+      h(Notices, {
+        state: result, loading: operation === 'search' ? 'Searching Ground News…'
+          : operation === 'lookup' ? 'Looking up article…' : 'Reading saved stories…',
+      }),
+      operation === 'lookup'
+        ? match && h(StoryList, { items: [match], onSelect: openMatch })
+        : items?.length > 0 && h(StoryList, { items, onSelect: setTarget }),
+      data && !result.pending && !result.error && !match && !items?.length &&
+        h('p', { className: 'gn-alert', role: 'status' }, operation === 'search'
+          ? 'No stories matched. Try a different headline or topic.'
+          : operation === 'lookup' ? 'No Ground News match for this article.' : 'Open a story from search to see it here.'),
     ),
   )
 }
@@ -491,7 +609,7 @@ function Surface({ compact, children }) {
 }
 
 function feedItems(data) {
-  const summaries = new Map((data?.stories || []).map(item => [item.id, item]))
+  const summaries = new Map((data?.stories || []).map(item => [item.requestedStoryId || item.id, item]))
   return (data?.events?.eventIds || []).map(id => summaries.get(id) || { id })
 }
 

@@ -21,6 +21,7 @@ _cache_spec = importlib.util.spec_from_file_location(
 cache_module = importlib.util.module_from_spec(_cache_spec)
 _cache_spec.loader.exec_module(cache_module)
 
+
 def fail(operation, kind, message):
     return {
         "schema_version": 1, "command": operation, "reads": [],
@@ -141,6 +142,10 @@ def execute(operation, args):
     """Return the same JSON envelope to both clients, including soft read failures."""
     try:
         if operation == "cache":
+            if "key" in args:
+                if "query" in args or "limit" in args:
+                    raise ValueError("Choose a snapshot key or search the saved library.")
+                return snapshot(text_arg(args, "key", 80))
             return library(text_arg(args, "query", 200, optional=True), int_arg(args, "limit", 16, 1, 40))
         if operation == "snapshot":
             return snapshot(text_arg(args, "key", 80))
@@ -149,7 +154,7 @@ def execute(operation, args):
         options = [operation, *policy, "--timeout", "8"]
         if operation == "search":
             kind = choice(args, "kind", "story", ("story", "interest"))
-            options += ["--limit", str(int_arg(args, "limit", 12, 1, 20)),
+            options += ["--limit", str(int_arg(args, "limit", 5, 1, 20)),
                         "--", kind, text_arg(args, "query", 200)]
         elif operation in ("story", "lookup"):
             options += ["--sources-limit", str(int_arg(args, "sources_limit", 24, 1, 60))]
@@ -158,8 +163,8 @@ def execute(operation, args):
             key, limit = ("url", 2048) if operation == "lookup" else ("story_id", 120)
             options += ["--", text_arg(args, key, limit)]
         elif operation == "feed":
-            options += ["--limit", str(int_arg(args, "limit", 8, 1, 20)),
-                        "--details", str(int_arg(args, "details", 3, 0, 5))]
+            options += ["--limit", str(int_arg(args, "limit", 5, 1, 20)),
+                        "--details", str(int_arg(args, "details", 2, 0, 5))]
             interest_id = text_arg(args, "interest_id", 120, optional=True)
             place = text_arg(args, "place", 160, optional=True)
             if bool(interest_id) == bool(place):
@@ -209,8 +214,10 @@ TOOLS = {
         [],
     ),
     "cache": (
-        "List or search previously cached Ground News stories and article matches entirely offline.",
-        {"query": QUERY, "limit": {"type": "integer", "minimum": 1, "maximum": 40}},
+        "List or search previously cached Ground News stories and article matches entirely offline. "
+        "Supply a cache key instead of query or limit to open one saved snapshot.",
+        {"query": QUERY, "limit": {"type": "integer", "minimum": 1, "maximum": 40},
+         "key": {"type": "string", "pattern": "^(story|lookup):[a-f0-9]{24}$"}},
         [],
     ),
     "blindspots": (
