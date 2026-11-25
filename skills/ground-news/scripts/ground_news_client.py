@@ -12,6 +12,7 @@ from email.utils import parsedate_to_datetime
 from http.client import HTTPException
 from pathlib import Path
 from urllib.error import HTTPError, URLError
+from urllib.parse import quote
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
@@ -28,6 +29,26 @@ class GroundError(Exception):
     def __init__(self, kind, message, **details):
         super().__init__(message)
         self.details = {"kind": kind, "message": message, **details}
+
+
+def coverage(event, source_limit):
+    result = {
+        key: event[key] for key in (
+            "id", "title", "slug", "generatedHeadline", "headlineVariants", "description",
+            "start", "place", "interests", "sourceCount", "biasSourceCount",
+            "blindspotData", "factuality", "ownership",
+        ) if key in event
+    }
+    slug = event.get("slug")
+    if event.get("summary"):
+        result["summary"] = event["summary"]
+    if isinstance(slug, str) and slug:
+        result["groundUrl"] = "https://ground.news/article/" + quote(slug, safe="")
+    sources = event.get("sources")
+    sources = sources if isinstance(sources, list) else []
+    result["sources"] = sources[:source_limit]
+    result["sourceEntriesAvailable"] = len(sources)
+    return result
 
 
 def cache_path():

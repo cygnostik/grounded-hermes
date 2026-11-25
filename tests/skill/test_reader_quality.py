@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+from contextlib import closing
 import sqlite3
 import subprocess
 import sys
@@ -64,7 +65,7 @@ class ReaderQualityTests(unittest.TestCase):
         self.assertEqual(lookup["event"]["summary"], self.event["summary"])
 
     def test_legacy_cache_without_card_table(self):
-        with sqlite3.connect(self.cache.path) as db:
+        with closing(sqlite3.connect(self.cache.path)) as db, db:
             db.execute("DROP TABLE story_cards")
         self.assert_readable_cards()
 

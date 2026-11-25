@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from urllib.parse import quote, urlencode, urlsplit
 
-from ground_news_client import Cache, Client, GroundError, cache_path, describe, story_card
+from ground_news_client import coverage, Cache, Client, GroundError, cache_path, describe, story_card
 
 
 KINDS = (
@@ -120,26 +120,6 @@ def extension_view(client, story_id, publisher_id):
         return not publisher_id or (has_id(source) and source["id"] == publisher_id)
 
     return client.read(kind, story_id, path, matches, service="extension")
-
-
-def coverage(event, source_limit):
-    result = {
-        key: event[key] for key in (
-            "id", "title", "slug", "generatedHeadline", "headlineVariants", "description",
-            "start", "place", "interests", "sourceCount", "biasSourceCount",
-            "blindspotData", "factuality", "ownership",
-        ) if key in event
-    }
-    slug = event.get("slug")
-    if event.get("summary"):
-        result["summary"] = event["summary"]
-    if isinstance(slug, str) and slug:
-        result["groundUrl"] = "https://ground.news/article/" + quote(slug, safe="")
-    sources = event.get("sources")
-    sources = sources if isinstance(sources, list) else []
-    result["sources"] = sources[:source_limit]
-    result["sourceEntriesAvailable"] = len(sources)
-    return result
 
 
 def valid_story_summary(payload, requested_id):

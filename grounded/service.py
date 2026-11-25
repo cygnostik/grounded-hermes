@@ -8,7 +8,6 @@ import subprocess
 import sys
 from functools import partial
 from pathlib import Path
-from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "skills" / "ground-news" / "scripts"
@@ -21,12 +20,6 @@ _cache_spec = importlib.util.spec_from_file_location(
 )
 cache_module = importlib.util.module_from_spec(_cache_spec)
 _cache_spec.loader.exec_module(cache_module)
-
-STAT_FIELDS = (
-    "id", "title", "slug", "start", "description", "sourceCount", "biasSourceCount",
-    "blindspotData", "factuality", "ownership", "generatedHeadline", "headlineVariants",
-)
-
 
 def fail(operation, kind, message):
     return {
@@ -92,18 +85,15 @@ def read_policy(args):
     return [] if policy == "prefer_cache" else ["--" + policy.replace("_", "-")]
 
 
-def cached_story(row):
+def cached_story(row, source_limit):
     payload = json.loads(row["payload"])
     event = payload.get("summary") if row["kind"] == "story" else payload.get("event")
     if not isinstance(event, dict) or not isinstance(event.get("id"), str):
         return None
-    story = {key: event[key] for key in STAT_FIELDS if key in event}
-    slug = story.get("slug")
-    if isinstance(slug, str) and slug:
-        story["groundUrl"] = "https://ground.news/article/" + quote(slug, safe="")
-    sources = event.get("sources")
-    sources = sources if isinstance(sources, list) else []
-    return story, sources
+    story = cache_module.coverage(event, source_limit)
+    if row["kind"] == "story":
+        story["requestedStoryId"] = row["label"]
+    return story
 
 
 def library(query, limit):
@@ -120,10 +110,9 @@ def library(query, limit):
         full = cache.get(row["key"])
         if full is None:
             continue
-        projection = cached_story(full)
-        if not projection:
+        story = cached_story(full, 0)
+        if not story:
             continue
-        story, _ = projection
         if story["id"] in seen:
             continue
         seen.add(story["id"])
@@ -139,12 +128,9 @@ def snapshot(key):
         raise ValueError("Choose a saved story or article snapshot.")
     cache = cache_module.Cache(cache_module.cache_path())
     row = cache.get(key)
-    projection = cached_story(row) if row else None
-    if not projection:
+    story = cached_story(row, 60) if row else None
+    if not story:
         return fail("snapshot", "cache_miss", "This story snapshot is no longer in the shared cache.")
-    story, sources = projection
-    story["sources"] = sources[:60]
-    story["sourceEntriesAvailable"] = len(sources)
     return {
         "schema_version": 1, "command": "snapshot",
         "reads": [{**cache_module.describe(row), "origin": "cache"}], "data": story,
