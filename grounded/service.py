@@ -203,7 +203,7 @@ TOOLS = {
         ["story_id"],
     ),
     "lookup": (
-        "Find the Ground story associated with a publisher article URL and get its coverage.",
+        "Read coverage from a Ground News story URL or a matching publisher article URL.",
         {"url": {"type": "string", "maxLength": 2048}, "sources_limit": SOURCES},
         ["url"],
     ),

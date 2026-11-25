@@ -13,7 +13,7 @@ Use a Hermes Agent and Desktop build with unified plugin packages, scoped REST, 
    ```
 
 2. If the agent plugin is disabled, run `hermes plugins enable grounded-hermes` in that profile. Restart its gateway if the plugin routes or tools are missing from a running Hermes instance.
-3. In Desktop, open **Capabilities → Plugins**, rescan if necessary, and enable the **Grounded News** Desktop contribution. Open **Grounded News** from the sidebar. The right pane shows saved stories and offers headline search and publisher URL lookup.
+3. In Desktop, open **Capabilities → Plugins**, rescan if necessary, and enable the **Grounded News** Desktop contribution. Open **Grounded News** from the sidebar or use its right pane beside a chat.
 
 For a remote gateway, install and enable the Agent package on the remote profile. In Desktop's **Install from Git** dialog, install the Desktop contribution on the machine running the app. The reader uses the cache on the connected gateway.
 
@@ -21,7 +21,8 @@ The default cache is `~/.cache/ground-news`, or `$XDG_CACHE_HOME/ground-news` if
 
 ## Read and compare
 
-- Search **Stories**, **Topics & publishers**, or **Article URL**. Select an interest to open its feed. Recent searches and feeds switch back to their existing results while Desktop is open. Use **Refresh results** to request a new snapshot.
+- Use **Open story** in the reader or right pane. Paste a Ground News link, publisher article link, or story ID and press Enter to open coverage directly.
+- Search **Stories** or **Topics & publishers**. Select an interest to open its feed. Recent searches and feeds reuse their existing results while Desktop is open. Use **Refresh results** to request a new snapshot.
 - In the mini pane, enter a headline and press **Search news** to read the results there. Open a saved story to see its source counts, publication date and cached publisher links. **Compare coverage** opens the full view. Use the publisher rating filter and **More publishers** to inspect additional coverage when available. Ground News calculates bias percentages over the bias-rated subset.
 - Use **Discuss in new chat** to switch to a fresh Hermes composer with the story ID, a coverage snapshot, and a comparison prompt. The draft is ready for review and manual submission. If the new composer already contains a draft, **Copy chat prompt** in the full view lets you keep it and paste the story where you choose.
 
@@ -31,7 +32,7 @@ The default cache is `~/.cache/ground-news`, or `$XDG_CACHE_HOME/ground-news` if
 | --- | --- |
 | `ground_news_search` | Story headlines and topic, publisher, or place interests |
 | `ground_news_story` | Coverage and publisher links by exact story ID |
-| `ground_news_lookup` | Ground story matching a publisher URL |
+| `ground_news_lookup` | Coverage for a Ground News story link or matching publisher article |
 | `ground_news_feed` | Stories for an interest ID or place code |
 | `ground_news_cache` | Saved story search and snapshot opening by cache key |
 | `ground_news_blindspots` | Ground News's left and right blindspot lists |

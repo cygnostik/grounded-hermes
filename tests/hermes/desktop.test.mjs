@@ -19,7 +19,7 @@ await module.link(specifier => {
   })
 })
 await module.evaluate()
-const { default: plugin, makeReader, preloadChat, promptFor, validUrl } = module.namespace
+const { default: plugin, makeReader, preloadChat, promptFor, storyRequest, validUrl } = module.namespace
 
 const story = {
   id: 'budget_01', title: 'Budget <b>talks</b> resume',
@@ -133,5 +133,15 @@ test('external article links accept HTTP(S) and reject other schemes or credenti
   assert.equal(validUrl(story.groundUrl), story.groundUrl)
   for (const url of ['javascript:alert(1)', 'file:///tmp/story', 'https://a:b@example.com/', 'https://example.com/\n']) {
     assert.equal(validUrl(url), null)
+  }
+})
+
+test('opens exact story IDs and article links through the existing gateway reads', () => {
+  assert.deepEqual(storyRequest(' budget_01 '), { operation: 'story', args: { story_id: 'budget_01' } })
+  for (const url of [story.groundUrl, 'https://publisher.example/article?ref=share']) {
+    assert.deepEqual(storyRequest(url), { operation: 'lookup', args: { url } })
+  }
+  for (const value of ['a whole headline', 'javascript:alert(1)', 'https://a:b@example.com/', '']) {
+    assert.equal(storyRequest(value), null)
   }
 })

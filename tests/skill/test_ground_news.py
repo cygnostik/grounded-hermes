@@ -31,6 +31,7 @@ STORY = {
 INTEREST = {"id": "feed-id", "legacyId": "publisher-id", "name": "Example News", "type": "source"}
 PLACE = {"id": "place-id", "name": "United States", "type": "place"}
 SUMMARY = "/public/event/story-artemis/summary"
+STORY_PAGE = "/article/artemis-launch_123"
 EDITIONS = "/v04/customFeed/topFeedEditions"
 SEARCH = "/public/search?limit=2"
 WRAPPER = """
@@ -40,7 +41,7 @@ from pathlib import Path
 script, base, *args = sys.argv[1:]
 sys.path.insert(0, str(Path(script).parent))
 import ground_news_client as client
-client.API_BASE = client.LOOKUP_BASE = base
+client.API_BASE = client.LOOKUP_BASE = client.SITE_BASE = base
 client.MIN_INTERVAL = 0.08
 client.MAX_RETRY_WAIT = 0.2
 sys.argv = [script, *args]
@@ -86,6 +87,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def default(self, body):
         path = urlsplit(self.path)
+        if path.path == STORY_PAGE:
+            return 200, {"Content-Type": "text/html"}, (
+                br'<script>self.__next_f.push([1,"{\"articleId\":\"story-artemis\"}"])</script>'
+            ), 0
         responses = {
             SUMMARY: {"summary": STORY},
             "/public/interest/feed-id": {"interest": INTEREST},
@@ -201,6 +206,16 @@ class GroundNewsCLI(unittest.TestCase):
         self.assertEqual(matches["data"]["entries"][0]["key"], key)
         self.assertEqual(self.run_cli("cache", "show", key, mock=False)["data"]["payload"], {"summary": STORY})
         self.assertEqual(len(self.server.calls), before)
+
+    def test_ground_news_link_resolves_slug_and_reopens_offline(self):
+        url = f"https://www.ground.news{STORY_PAGE}/?ref=share#coverage"
+        result = self.run_cli("lookup", url)
+        self.assertEqual(result["data"]["event"]["id"], STORY["id"])
+        self.assertEqual(result["data"]["event"]["sources"], STORY["sources"])
+        cached = self.run_cli("lookup", url, "--cache-only")
+        self.assertEqual(cached["data"], result["data"])
+        self.assertEqual([entry["origin"] for entry in cached["reads"]], ["cache", "cache"])
+        self.assertEqual([path for path, _, _ in self.server.calls], [STORY_PAGE, SUMMARY])
 
     def test_feed_trending_editions_and_blindspot_details(self):
         feed = self.run_cli("feed", "feed-id", "--limit", "2", "--details", "2")["data"]

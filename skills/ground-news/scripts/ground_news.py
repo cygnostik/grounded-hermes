@@ -7,14 +7,14 @@ import re
 import sqlite3
 import sys
 from pathlib import Path
-from urllib.parse import quote, urlencode, urlsplit
+from urllib.parse import quote, unquote, urlencode, urlsplit
 
 from ground_news_client import coverage, Cache, Client, GroundError, cache_path, describe, story_card
 
 
 KINDS = (
     "search-story", "search-interest", "lookup", "story", "interest",
-    "feed", "place", "blindspots", "trending", "editions", "extension-popup", "extension-toolbar",
+    "feed", "place", "blindspots", "trending", "editions", "extension-popup", "extension-toolbar", "story-link",
 )
 
 
@@ -58,7 +58,7 @@ def article_url(value):
             return value.split("#", 1)[0]
     except (TypeError, ValueError, AttributeError):
         pass
-    raise argparse.ArgumentTypeError("expected an HTTP(S) publisher article URL without credentials")
+    raise argparse.ArgumentTypeError("expected an HTTP(S) article URL without credentials")
 
 
 def nonempty(value):
@@ -92,7 +92,25 @@ def search(client, kind, query, limit):
     )
 
 
+def story_page_id(raw):
+    # Ground's serialized article component names the cluster independently of its URL slug.
+    ids = set(re.findall(rb'\\"articleId\\":\\"([A-Za-z0-9][A-Za-z0-9_-]{0,119})\\"', raw))
+    if len(ids) != 1:
+        raise GroundError("response", "Ground News did not identify the story in that link. Try its headline or story ID.")
+    return {"id": ids.pop().decode("ascii")}
+
+
 def lookup(client, url):
+    parsed = urlsplit(url)
+    if parsed.hostname in {"ground.news", "www.ground.news"}:
+        match = re.fullmatch(r"/article/([^/]+)/?", parsed.path)
+        slug = unquote(match[1]) if match else ""
+        if not re.fullmatch(r"[\w-]{1,512}", slug):
+            raise GroundError("input", "Use a Ground News story link from its /article/ page.")
+        page = client.read("story-link", slug, "/article/" + quote(slug, safe=""), has_id,
+                           service="site", parse=story_page_id)
+        summary = read_story(client, page["id"], None)
+        return {"status": "event", "event": summary}
     return client.read(
         "lookup", url, "/search?" + urlencode({"url": url}),
         lambda data: isinstance(data.get("status"), str)
@@ -239,7 +257,7 @@ def build_parser():
     cmd.add_argument("query", type=nonempty)
     cmd.add_argument("--limit", type=bounded_int(1, 20), default=5)
 
-    cmd = sub.add_parser("lookup", parents=[common], help="match a publisher URL in Ground's index")
+    cmd = sub.add_parser("lookup", parents=[common], help="open a Ground News or publisher article URL")
     cmd.add_argument("url", type=article_url)
     cmd.add_argument("--sources-limit", type=bounded_int(0, 500), default=8)
 

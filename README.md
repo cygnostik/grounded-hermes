@@ -6,7 +6,7 @@ One channel calls it chaos. Flip over and it’s a rally. Give this independent 
 
 ## Try it
 
-**Hermes.** Install with a GitHub account that can read this repo. Enable **Grounded News** in Desktop and open it from the sidebar. **Discuss in new chat** brings the story and its coverage into a draft. [Hermes setup](docs/hermes.md) · [Reader screenshot](docs/images/coverage-reader.png) · [Chat pane](docs/images/chat-pane.png)
+**Hermes.** Install with a GitHub account that can read this repo. Enable **Grounded News** in Desktop, open it from the sidebar, and paste a link or ID into **Open story**. **Discuss in new chat** brings the coverage into a draft. [Hermes setup](docs/hermes.md) · [Reader screenshot](docs/images/coverage-reader.png) · [Chat pane](docs/images/chat-pane.png)
 
 ```sh
 hermes plugins install https://github.com/cygnostik/grounded-hermes.git

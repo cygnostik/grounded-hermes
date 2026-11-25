@@ -40,6 +40,7 @@ const css = `
 .gn-header { border-block-start: 3px solid var(--gn-accent); border-block-end: 1px solid var(--gn-rule); padding-block: 13px 16px; margin-block-end: 20px; }
 .gn-mini .gn-header { padding-block: 9px 11px; margin-block-end: 13px; }
 .gn-mini .gn-pane-search { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; margin-block-end: 8px; }
+.gn-open-story { margin-block-end: 8px; }
 .gn-header p { color: var(--gn-muted); margin-block-start: 5px; }
 .gn-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-inline-size: 0; }
 .gn-spread { justify-content: space-between; }
@@ -220,6 +221,22 @@ function validUrl(raw) {
     const url = new URL(raw)
     return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password ? url.href : null
   } catch { return null }
+}
+
+const STORY_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$/
+
+function storyRequest(input) {
+  const value = input.trim()
+  if (STORY_ID.test(value)) return { operation: 'story', args: { story_id: value } }
+  const url = validUrl(value)
+  if (url && url.length <= 2048) return { operation: 'lookup', args: { url } }
+  return null
+}
+
+function openedStory(result, operation) {
+  const data = result.value?.data
+  const event = operation === 'story' ? data : operation === 'lookup' ? data?.event : null
+  return event?.id ? { id: event.id, event, read: result.value.reads?.at(-1) } : null
 }
 
 function textOnly(value) {
@@ -412,7 +429,7 @@ async function preloadChat(target, story, isCurrent, pause = ms => new Promise(r
 
 function ChatActions({ ctx, story, reader, scope, compact }) {
   const [busy, setBusy] = useState(false)
-  const valid = /^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$/.test(story.id || '')
+  const valid = STORY_ID.test(story.id || '')
   if (!valid) return null
   async function start() {
     setBusy(true)
@@ -508,34 +525,51 @@ function useLibraryRevision(reader) {
   return useSyncExternalStore(reader.subscribe, reader.revision)
 }
 
+function OpenStoryForm({ onOpen, compact }) {
+  const [value, setValue] = useState('')
+  const [invalid, setInvalid] = useState(false)
+  return h('form', {
+    className: compact ? 'gn-pane-search' : 'gn-line gn-search gn-open-story',
+    'aria-label': 'Open a story',
+    onSubmit: event => {
+      event.preventDefault()
+      const request = storyRequest(value)
+      setInvalid(!request)
+      if (request) onOpen({ ...request, title: 'Open story' })
+    },
+  },
+  h('input', {
+    type: 'text', value, required: true, maxLength: 2048, autoCapitalize: 'none', spellCheck: false,
+    placeholder: 'Story link or ID', 'aria-label': 'Story link or ID', 'aria-invalid': invalid || undefined,
+    onChange: event => { setValue(event.target.value); setInvalid(false) },
+  }),
+  h(Button, { main: true, type: 'submit', disabled: !value.trim() }, 'Open story'),
+  invalid && h('p', { className: 'gn-alert', role: 'alert', style: { gridColumn: '1 / -1' } },
+    'Paste a Ground News link, a publisher article link, or a Ground News story ID.'),
+  )
+}
+
 function MiniPane({ ctx, reader, scope }) {
-  const [target, setTarget] = useState(null)
+  const [selected, setSelected] = useState(null)
   const [query, setQuery] = useState('')
-  const [url, setUrl] = useState('')
   const [request, setRequest] = useState(null)
   const listRef = useRef(null)
   const revision = useLibraryRevision(reader)
   const operation = request?.operation || 'cache'
   const result = useRead(reader, scope, operation, request?.args || { limit: 8 }, request ? 0 : revision)
   const data = result.value?.data
-  const match = operation === 'lookup' ? data?.event : null
+  const direct = operation === 'story' || operation === 'lookup'
+  const target = selected || openedStory(result, operation)
   const items = operation === 'search' ? data?.searchResults : data?.entries
   const resultTitle = operation === 'search' ? `Results for “${request.args.query}”`
-    : operation === 'lookup' ? 'Article match' : 'Saved stories'
+    : direct ? 'Open story' : 'Saved stories'
 
-  function submit(event, next) {
-    event.preventDefault()
-    if (request && request.operation === next.operation &&
-        (next.operation === 'search' ? next.args.query === request.args.query : next.args.url === request.args.url)) {
+  function submit(next) {
+    if (request?.operation === next.operation && JSON.stringify(request.args) === JSON.stringify(next.args)) {
       if (result.error) result.refresh()
-      else if (match) openMatch()
       return
     }
     setRequest(next)
-  }
-
-  function openMatch() {
-    setTarget({ ...match, event: match, read: result.value.reads.at(-1) })
   }
 
   return h(Surface, { compact: true },
@@ -543,55 +577,43 @@ function MiniPane({ ctx, reader, scope }) {
     !target && h('form', {
       className: 'gn-pane-search', role: 'search', 'aria-label': 'Find news stories',
       onSubmit: event => {
+        event.preventDefault()
         const value = query.trim()
-        if (!value) return event.preventDefault()
-        submit(event, { operation: 'search', args: { kind: 'story', query: value } })
+        if (value) submit({ operation: 'search', args: { kind: 'story', query: value } })
       },
     },
     h('input', {
       type: 'search', value: query, required: true, maxLength: 200,
-      placeholder: 'Search story headlines', 'aria-label': 'Search story headlines',
+      placeholder: 'Search headlines', 'aria-label': 'Search story headlines',
       onChange: event => setQuery(event.target.value),
     }),
     h(Button, { main: true, type: 'submit', disabled: !query.trim() }, 'Search news'),
     ),
-    !target && h('form', {
-      className: 'gn-pane-search', role: 'search', 'aria-label': 'Find a publisher article',
-      onSubmit: event => {
-        const value = url.trim()
-        if (!value) return event.preventDefault()
-        submit(event, { operation: 'lookup', args: { url: value } })
-      },
-    },
-    h('input', {
-      type: 'url', value: url, required: true, maxLength: 2048,
-      placeholder: 'Publisher article URL', 'aria-label': 'Publisher article URL',
-      onChange: event => setUrl(event.target.value),
-    }),
-    h(Button, { type: 'submit', disabled: !url.trim() }, 'Find article'),
-    ),
+    !target && h(OpenStoryForm, { onOpen: submit, compact: true }),
     h('div', { className: 'gn-line gn-spread' },
       h(Button, { onClick: () => { reader.select(scope, target); host.navigate(PATH) } }, 'Open full reader'),
-      request ? h(Button, { onClick: () => { setTarget(null); setRequest(null) } }, 'Saved stories')
+      request ? h(Button, { onClick: () => { setSelected(null); setRequest(null) } }, 'Saved stories')
         : !target && h(Button, { onClick: result.refresh, disabled: result.pending }, 'Reload saved'),
     ),
     target ? h(Coverage, {
       key: target.cache?.key || target.id, ctx, reader, scope, target, compact: true,
-      backLabel: operation === 'search' ? '← Search results' : operation === 'lookup' ? '← Article match' : '← Saved stories',
-      onBack: () => { setTarget(null); requestAnimationFrame(() => listRef.current?.focus()) },
+      backLabel: operation === 'search' ? '← Search results' : '← Saved stories',
+      onBack: () => {
+        setSelected(null)
+        if (direct) setRequest(null)
+        requestAnimationFrame(() => listRef.current?.focus())
+      },
     }) : h('section', { className: 'gn-section' },
       h('h2', { className: 'gn-section-title', tabIndex: -1, ref: listRef }, resultTitle),
       h(Notices, {
         state: result, loading: operation === 'search' ? 'Searching Ground News…'
-          : operation === 'lookup' ? 'Looking up article…' : 'Reading saved stories…',
+          : direct ? 'Opening story…' : 'Reading saved stories…',
       }),
-      operation === 'lookup'
-        ? match && h(StoryList, { items: [match], onSelect: openMatch })
-        : items?.length > 0 && h(StoryList, { items, onSelect: setTarget }),
-      data && !result.pending && !result.error && !match && !items?.length &&
+      items?.length > 0 && h(StoryList, { items, onSelect: setSelected }),
+      data && !result.pending && !result.error && !items?.length &&
         h('p', { className: 'gn-alert', role: 'status' }, operation === 'search'
           ? 'No stories matched. Try a different headline or topic.'
-          : operation === 'lookup' ? 'No Ground News match for this article.' : 'Open a story from search to see it here.'),
+          : direct ? 'No Ground News match for this article. Try searching for its headline.' : 'Opened stories will appear here.'),
     ),
   )
 }
@@ -620,9 +642,8 @@ function ResultList({ request, result, onStory, onFeed }) {
     : request.operation === 'feed' ? feedItems(data)
       : data?.searchResults
   if (request.operation === 'lookup') {
-    return data && (data.event
-      ? h(StoryList, { items: [data.event], onSelect: event => onStory({ ...event, event, read: result.value.reads.at(-1) }) })
-      : h('p', { className: 'gn-alert' }, 'Ground News has no story match for that article. Try searching for its headline.'))
+    return data && !result.pending && !result.error &&
+      h('p', { className: 'gn-alert', role: 'status' }, 'No Ground News match for this article. Try searching for its headline.')
   }
   if (!items?.length) {
     if (!data || result.pending || result.error) return null
@@ -638,13 +659,15 @@ function NewsPage({ ctx, reader, scope }) {
   const [query, setQuery] = useState('')
   const [request, setRequest] = useState(() => reader.page(scope)?.request || START)
   const [recent, setRecent] = useState(() => reader.page(scope)?.recent || [])
-  const target = useSyncExternalStore(reader.subscribeSelection, () => reader.selection(scope))
+  const selected = useSyncExternalStore(reader.subscribeSelection, () => reader.selection(scope))
   const heading = useRef(null)
   const version = useLibraryRevision(reader)
   const result = useRead(reader, scope, request.operation, request.args, request.operation === 'cache' ? version : 0)
+  const direct = request.operation === 'story' || request.operation === 'lookup'
+  const target = selected || openedStory(result, request.operation)
   const inputLabel = {
     story: 'Search story headlines', interest: 'Search topics, publishers, or places',
-    lookup: 'Paste a publisher article URL', cache: 'Search saved stories',
+    cache: 'Search saved stories',
   }[mode]
   useEffect(() => { reader.rememberPage(scope, { request, recent }) }, [reader, scope, request, recent])
 
@@ -664,8 +687,7 @@ function NewsPage({ ctx, reader, scope }) {
     event.preventDefault()
     const value = query.trim()
     if (!value) return
-    if (mode === 'lookup') select({ operation: 'lookup', args: { url: value }, title: 'Article match' })
-    else if (mode === 'cache') select({ operation: 'cache', args: { query: value }, title: 'Saved stories' })
+    if (mode === 'cache') select({ operation: 'cache', args: { query: value }, title: 'Saved stories' })
     else select({
       operation: 'search', args: { kind: mode, query: value },
       title: value, label: mode === 'interest' ? `Topics · ${value}` : value,
@@ -687,18 +709,22 @@ function NewsPage({ ctx, reader, scope }) {
 
   return h(Surface, null,
     h(Header, {}),
+    h(OpenStoryForm, { onOpen: next => {
+      if (request.operation === next.operation && JSON.stringify(request.args) === JSON.stringify(next.args)) {
+        reader.select(scope, null)
+        if (result.error) result.refresh()
+      } else select(next)
+    } }),
     h('form', { className: 'gn-line gn-search', role: 'search', onSubmit: submit },
       h('select', {
         value: mode, 'aria-label': 'Search type', onChange: event => { setMode(event.target.value); setQuery('') },
       },
       h('option', { value: 'story' }, 'Stories'),
       h('option', { value: 'interest' }, 'Topics & publishers'),
-      h('option', { value: 'lookup' }, 'Article URL'),
       h('option', { value: 'cache' }, 'Saved stories')),
       h('input', {
         value: query, onChange: event => setQuery(event.target.value), placeholder: inputLabel,
-        'aria-label': inputLabel, maxLength: mode === 'lookup' ? 2048 : 200,
-        type: mode === 'lookup' ? 'url' : 'search', required: true,
+        'aria-label': inputLabel, maxLength: 200, type: 'search', required: true,
       }),
       h(Button, { main: true, type: 'submit' }, 'Search'),
       h(Button, { onClick: showSaved }, 'Saved stories'),
@@ -713,8 +739,10 @@ function NewsPage({ ctx, reader, scope }) {
     ),
     target && h(Coverage, {
       key: target.cache?.key || target.id, ctx, reader, scope, target,
+      backLabel: direct ? '← Saved stories' : undefined,
       onBack: () => {
-        reader.select(scope, null)
+        if (direct) select(START)
+        else reader.select(scope, null)
         requestAnimationFrame(() => heading.current?.focus())
       },
     }),
@@ -722,11 +750,12 @@ function NewsPage({ ctx, reader, scope }) {
       h('div', { className: 'gn-line gn-spread' },
         h('h2', { className: 'gn-section-title', tabIndex: -1, ref: heading }, request.title),
         h(Button, { disabled: result.pending, onClick: result.refresh },
-          request.operation === 'cache' ? 'Reload saved' : 'Refresh results'),
+          request.operation === 'cache' ? 'Reload saved' : direct ? 'Retry' : 'Refresh results'),
       ),
       result.value?.reads?.[0] && h('p', { className: 'gn-meta' }, snapshotLabel(result.value.reads[0])),
       h(Notices, {
-        state: result, loading: request.operation === 'cache' ? 'Reading saved stories…' : 'Checking Ground News…',
+        state: result, loading: request.operation === 'cache' ? 'Reading saved stories…'
+          : direct ? 'Opening story…' : 'Checking Ground News…',
       }),
       h(ResultList, { request, result, onStory: story => reader.select(scope, story), onFeed: openFeed }),
     ),
@@ -738,7 +767,7 @@ function View({ ctx, reader, mini }) {
   return h(mini ? MiniPane : NewsPage, { key: scope, ctx, reader, scope })
 }
 
-export { makeReader, preloadChat, promptFor, validUrl }
+export { makeReader, preloadChat, promptFor, storyRequest, validUrl }
 
 export default {
   id: 'grounded-hermes',

@@ -19,6 +19,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 API_BASE = "https://web-api-cdn.ground.news/api"
 LOOKUP_BASE = "https://extension.ground.news"
 EXTENSION_BASE = "https://production.checkitt.news/api/public/extension"
+SITE_BASE = "https://ground.news"
 MIN_INTERVAL = 0.6
 MAX_RETRY_WAIT = 4
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
@@ -233,8 +234,8 @@ class Client:
         self.responses = {}
         self.opener = build_opener(NoRedirect())
 
-    def read(self, kind, label, path, check, *, body=None, service="web"):
-        bases = {"web": API_BASE, "lookup": LOOKUP_BASE, "extension": EXTENSION_BASE}
+    def read(self, kind, label, path, check, *, body=None, service="web", parse=None):
+        bases = {"web": API_BASE, "lookup": LOOKUP_BASE, "extension": EXTENSION_BASE, "site": SITE_BASE}
         url = bases[service] + path
         request_body = json.dumps(body, sort_keys=True).encode() if body is not None else None
         digest = hashlib.sha256(url.encode() + b"\x00" + (request_body or b"")).hexdigest()
@@ -252,7 +253,10 @@ class Client:
                 row = self.cache.get(key)
                 if row and (not self.refresh or row["fetched"] >= self.started):
                     return self.cached(row, url)
-                payload = self.fetch(url, request_body)
+                if parse is None:
+                    payload = self.fetch(url, request_body)
+                else:
+                    payload = self.fetch(url, request_body, parse)
                 if not isinstance(payload, dict) or not check(payload):
                     raise GroundError("response", f"Unexpected Ground News response for {label}.")
                 fetched = self.cache.put(key, kind, label, payload)
@@ -277,8 +281,11 @@ class Client:
         self.responses[key] = payload
         return payload
 
-    def fetch(self, url, body):
-        headers = {"Accept": "application/json", "User-Agent": "ground-news-reading-skill/1"}
+    def fetch(self, url, body, parse=None):
+        headers = {
+            "Accept": "text/html" if parse else "application/json",
+            "User-Agent": "ground-news-reading-skill/1",
+        }
         if body is not None:
             headers["Content-Type"] = "application/json"
         request = Request(url, data=body, headers=headers)
@@ -313,6 +320,8 @@ class Client:
                 raise GroundError(kind, f"Ground News request failed: {reason}") from exc
             if len(raw) > MAX_RESPONSE_BYTES:
                 raise GroundError("response", "Ground News response exceeded the size limit.")
+            if parse:
+                return parse(raw)
             try:
                 return json.loads(raw, parse_constant=reject_constant)
             except (ValueError, RecursionError) as exc:
