@@ -1,7 +1,9 @@
-import { host, ROUTES_AREA, SIDEBAR_NAV_AREA } from '@hermes/plugin-sdk'
+import * as sdk from '@hermes/plugin-sdk'
 import { createElement as h, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 
+const { host, ROUTES_AREA, SIDEBAR_NAV_AREA, SandboxedFrame } = sdk
 const PATH = '/grounded-news'
+const COVERAGE_VIEWS = ['Overview', 'Articles', 'Bias', 'Factuality', 'Ownership']
 const SIDES = [
   ['Left', 'leftPercent', 'leftSrcCount'],
   ['Center', 'centerPercent', 'cntrSrcCount'],
@@ -101,12 +103,13 @@ const css = `
 .gn .gn-rating-row dd { margin: 0; font-weight: 650; font-variant-numeric: tabular-nums; z-index: 0; }
 .gn .gn-rating-row::before { content: ''; position: absolute; inset-block: 3px; inset-inline-start: 0; inline-size: var(--gn-share); border-radius: 2px; background: color-mix(in srgb, var(--gn-ink) 6%, transparent); }
 .gn-mini .gn-spectrum { height: 7px; margin-block: 10px 8px; }
-.gn-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 10px; }
 .gn-source { padding: 11px 0; overflow-wrap: anywhere; }
 .gn a { color: var(--gn-ink); text-decoration: underline; text-underline-offset: 3px; border-radius: 2px; }
 .gn-source .gn-meta { display: block; }
 .gn-source a { font-weight: 650; }
 .gn-detail-top { margin-block: 16px 8px; }
+.gn-views { border-block-end: 1px solid var(--gn-rule); padding-block-end: 9px; }
+.gn-article-frame { display: block; inline-size: 100%; block-size: clamp(420px, 66vh, 900px); border: 1px solid var(--gn-rule); border-radius: 6px; margin-block-start: 12px; background: white; }
 @container (max-width: 355px) {
   .gn-search input { order: -1; flex-basis: 100%; }
   .gn-search select { flex: 1; }
@@ -262,13 +265,17 @@ function Button({ children, onClick, main, disabled, type = 'button', ...props }
   return h('button', { ...props, type, onClick, disabled, className: main ? 'gn-primary' : 'gn-quiet' }, children)
 }
 
-function Link({ ctx, url, children }) {
+function Link({ ctx, url, children, onOpen }) {
   const href = validUrl(url)
   if (!href) return children
   return h('a', {
     href,
     onClick: async event => {
       event.preventDefault()
+      if (onOpen && !(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)) {
+        onOpen(href)
+        return
+      }
       if (!(await ctx.os.openExternal(href))) host.notify({ kind: 'error', message: 'Hermes could not open this link.' })
     },
   }, children)
@@ -332,11 +339,11 @@ function Stats({ story, compact = false }) {
 function Ratings({ title, values }) {
   const entries = Object.entries(values || {}).filter(([, count]) => Number.isSafeInteger(count) && count > 0)
     .sort(([, a], [, b]) => b - a)
-  if (!entries.length) return null
   const total = entries.reduce((sum, [, count]) => sum + count, 0)
   return h('section', { className: 'gn-card' },
     h('h3', { className: 'gn-kicker' }, title),
-    h('dl', { className: 'gn-rating-rows' }, entries.map(([category, count]) =>
+    entries.length === 0 && h('p', { className: 'gn-meta' }, 'No breakdown in this snapshot.'),
+    entries.length > 0 && h('dl', { className: 'gn-rating-rows' }, entries.map(([category, count]) =>
       h('div', { className: 'gn-rating-row', key: category, style: { '--gn-share': `${100 * count / total}%` } },
         h('dt', null, RATING_LABELS[category] || category), h('dd', null, count.toLocaleString())))),
   )
@@ -352,13 +359,21 @@ function originalSource(source) {
   }
 }
 
-function Publishers({ ctx, story, compact }) {
+function publisherArticles(story) {
+  const articles = new Map()
+  for (const source of Array.isArray(story.sources) ? story.sources : []) {
+    if (!source || typeof source !== 'object') continue
+    const article = originalSource(source)
+    if (article.href && !articles.has(article.href)) articles.set(article.href, article)
+  }
+  return [...articles.values()]
+}
+
+function Publishers({ ctx, articles, compact, onOpen }) {
   const [bias, setBias] = useState('All')
-  const sources = Array.isArray(story.sources) ? story.sources.filter(s => s && typeof s === 'object') : []
-  const parsed = sources.map(originalSource).filter(source => source.href)
-  const types = [...new Set(parsed.map(source => source.bias))]
+  const types = [...new Set(articles.map(source => source.bias))]
   const filter = types.includes(bias) ? bias : 'All'
-  const visible = (filter === 'All' ? parsed : parsed.filter(source => source.bias === filter))
+  const visible = (filter === 'All' ? articles : articles.filter(source => source.bias === filter))
     .slice(0, compact ? 4 : undefined)
 
   return h('section', { className: 'gn-section' },
@@ -368,15 +383,59 @@ function Publishers({ ctx, story, compact }) {
         'aria-label': 'Filter publishers by Ground News bias', value: filter, onChange: event => setBias(event.target.value),
       }, ['All', ...types].map(type => h('option', { key: type, value: type }, type === 'All' ? 'All ratings' : type))),
     ),
-    !compact && parsed.length > 0 && h('p', { className: 'gn-meta' },
-      `${visible.length} of ${parsed.length} listed links shown · Ratings by Ground News`),
+    !compact && articles.length > 0 && h('p', { className: 'gn-meta' },
+      `${visible.length} of ${articles.length} listed links shown · Ratings by Ground News`),
     !visible.length && h('p', { className: 'gn-alert' }, 'No publisher article links in this snapshot.'),
-    h('ul', { className: 'gn-list' }, visible.map((source, index) =>
-      h('li', { key: `${source.href}-${index}`, className: 'gn-source' },
-        h(Link, { ctx, url: source.href }, source.title || source.name),
+    h('ul', { className: 'gn-list' }, visible.map(source =>
+      h('li', { key: source.href, className: 'gn-source' },
+        h(Link, { ctx, url: source.href, onOpen }, source.title || source.name),
         h('span', { className: 'gn-meta' },
           [source.title ? source.name : '', source.bias, source.date].filter(Boolean).join(' · ')),
       ))),
+  )
+}
+
+function ArticleView({ ctx, articles, index, onOpen, onList, hidden }) {
+  const article = articles[index]
+  return h('section', { className: 'gn-section', 'aria-label': 'Publisher article', hidden },
+    h('div', { className: 'gn-line' },
+      h(Button, { onClick: onList }, 'All articles'),
+      h(Button, { disabled: index === 0, onClick: () => onOpen(articles[index - 1].href) }, 'Previous'),
+      h(Button, { disabled: index === articles.length - 1, onClick: () => onOpen(articles[index + 1].href) }, 'Next'),
+      h('span', { className: 'gn-meta' }, `${index + 1} of ${articles.length}`),
+    ),
+    h('div', { className: 'gn-detail-top', 'aria-live': 'polite' },
+      h('h3', { className: 'gn-section-title' }, article.title || article.name),
+      h('p', { className: 'gn-meta' }, [article.name, article.bias, article.date].filter(Boolean).join(' · ')),
+    ),
+    h(Link, { ctx, url: article.href }, 'Open in browser ↗'),
+    SandboxedFrame && h(SandboxedFrame, {
+      key: article.href, src: article.href, title: `Article from ${article.name}`, className: 'gn-article-frame',
+    }),
+  )
+}
+
+function CoverageViews({ ctx, story, articles, initialArticle }) {
+  const [view, setView] = useState(initialArticle ? 'Articles' : 'Overview')
+  const [articleUrl, setArticleUrl] = useState(initialArticle)
+  const index = articles.findIndex(article => article.href === articleUrl)
+  function openArticle(href) {
+    setArticleUrl(href)
+    setView('Articles')
+  }
+  return h('div', { className: 'gn-section' },
+    h('nav', { className: 'gn-line gn-views', 'aria-label': 'Story views' },
+      COVERAGE_VIEWS.map(name => h(Button, {
+        key: name, main: name === view, 'aria-pressed': name === view, onClick: () => setView(name),
+      }, name))),
+    (view === 'Overview' || view === 'Bias') && h(Stats, { story }),
+    view === 'Factuality' && h(Ratings, { title: 'Publisher factuality · Ground News', values: story.factuality }),
+    view === 'Ownership' && h(Ratings, { title: 'Publisher ownership · Ground News', values: story.ownership }),
+    (view === 'Overview' || view === 'Bias' || (view === 'Articles' && index < 0)) &&
+      h(Publishers, { ctx, articles, onOpen: openArticle }),
+    index >= 0 && h(ArticleView, {
+      ctx, articles, index, onOpen: openArticle, onList: () => setArticleUrl(null), hidden: view !== 'Articles',
+    }),
   )
 }
 
@@ -478,6 +537,7 @@ function Coverage({ ctx, reader, scope, target, compact = false, onBack, backLab
   const story = original.expandedCoverage || original
   const lastRead = currentRead || lastStory?.read || target.read || target.cache
   const expansionError = original.expansionError
+  const articles = publisherArticles(story)
 
   return h('article', { className: 'gn-section' },
     h('div', { className: 'gn-line gn-spread' },
@@ -493,7 +553,7 @@ function Coverage({ ctx, reader, scope, target, compact = false, onBack, backLab
     ),
     h(Notices, { state: result, loading: options?.more_sources ? 'Checking for more publisher coverage…' : 'Opening story…' }),
     expansionError && h('p', { className: 'gn-alert', role: 'status' }, `More coverage unavailable. ${expansionError.message}`),
-    h(Stats, { story, compact }),
+    compact && h(Stats, { story, compact: true }),
     h('div', { className: 'gn-line gn-section' },
       h(ChatActions, { ctx, reader, scope, story: { ...story, cacheKey: lastRead?.key }, compact }),
       validUrl(story.groundUrl) && h(Link, { ctx, url: story.groundUrl }, 'Open on Ground News ↗'),
@@ -513,11 +573,12 @@ function Coverage({ ctx, reader, scope, target, compact = false, onBack, backLab
         },
       }, 'More publishers'),
     ),
-    !compact && h('div', { className: 'gn-facts' },
-      h(Ratings, { title: 'Factuality counts · Ground News', values: story.factuality }),
-      h(Ratings, { title: 'Ownership counts · Ground News', values: story.ownership }),
-    ),
-    h(Publishers, { ctx, story, compact }),
+    compact
+      ? h(Publishers, { ctx, articles, compact: true, onOpen: articleUrl => {
+        reader.select(scope, { id: story.id, event: story, read: lastRead, articleUrl })
+        host.navigate(PATH)
+      } })
+      : h(CoverageViews, { ctx, story, articles, initialArticle: target.articleUrl }),
   )
 }
 
@@ -740,7 +801,7 @@ function NewsPage({ ctx, reader, scope }) {
       }, item.request.label || item.request.title)),
     ),
     target && h(Coverage, {
-      key: target.cache?.key || target.id, ctx, reader, scope, target,
+      key: JSON.stringify([target.cache?.key || target.id, target.articleUrl]), ctx, reader, scope, target,
       backLabel: direct ? '← Saved stories' : undefined,
       onBack: () => {
         if (direct) select(START)
