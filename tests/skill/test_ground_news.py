@@ -244,6 +244,31 @@ class GroundNewsCLI(unittest.TestCase):
         )
         self.assertEqual([path for path, _, _ in self.server.calls], [STORY_PAGE])
 
+    def test_wire_metadata_preserves_outlets_and_nested_copies(self):
+        page = {
+            "articleId": STORY["id"],
+            "articleSources": [{
+                "url": "https://wire.example/original", "wireStoryId": "wire-1",
+                "sourceInfo": {"id": "wire-outlet", "name": "Wire Service"},
+            }],
+            "allSources": [{
+                "url": "https://wire.example/original", "wireStoryId": "wire-1",
+                "isOriginatingWireSrc": True, "sourceInfo": "$1:articleSources:0:sourceInfo",
+                "wireStories": [{
+                    "url": "https://publisher.example/copy",
+                    "sourceInfo": {"id": "publisher", "name": "Publisher"},
+                }],
+            }],
+        }
+        flight = json.dumps(page, separators=(",", ":"))
+        html = b"<script>self.__next_f.push(" + json.dumps([1, flight]).encode() + b")</script>"
+        self.server.overrides[STORY_PAGE] = [(200, {"Content-Type": "text/html"}, html, 0)]
+        rows = self.run_cli("paywalls", f"https://ground.news{STORY_PAGE}", STORY["id"])["data"]["sources"]
+        self.assertEqual([row["wireStoryId"] for row in rows], ["wire-1", "wire-1"])
+        self.assertEqual([row["sourceInfo"]["id"] for row in rows], ["wire-outlet", "publisher"])
+        self.assertIs(rows[0]["isOriginatingWireSrc"], True)
+        self.assertNotIn("isOriginatingWireSrc", rows[1])
+
     def test_feed_trending_editions_and_blindspot_details(self):
         feed = self.run_cli("feed", "feed-id", "--limit", "2", "--details", "2")["data"]
         self.assertEqual(feed["interestId"], "feed-id")

@@ -15,7 +15,7 @@ from ground_news_client import coverage, Cache, Client, GroundError, cache_path,
 KINDS = (
     "search-story", "search-interest", "lookup", "story", "interest",
     "feed", "place", "blindspots", "trending", "editions", "extension-popup", "extension-toolbar", "story-link",
-    "paywalls", "publisher-labels",
+    "paywalls", "publisher-labels", "story-publishers",
 )
 
 
@@ -110,6 +110,31 @@ def ground_story_slug(url):
     return slug
 
 
+def wire_story_id(value):
+    return value if isinstance(value, str) and ID_PATTERN.fullmatch(value) else None
+
+
+def page_source_rows(data, decoder):
+    # articleSources carries full outlet data. allSources can refer back to it
+    # and contributes the grouped copies and any explicit originating marker.
+    for field in ("articleSources", "allSources"):
+        for marker in re.finditer(rf'"{field}"\s*:\s*(?=\[)', data):
+            try:
+                rows, _ = decoder.raw_decode(data, marker.end())
+            except (ValueError, RecursionError):
+                continue
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                wire_id = wire_story_id(row.get("wireStoryId"))
+                yield row, wire_id
+                copies = row.get("wireStories")
+                if isinstance(copies, list):
+                    for copy in copies:
+                        if isinstance(copy, dict):
+                            yield copy, wire_story_id(copy.get("wireStoryId")) or wire_id
+
+
 def story_publisher_labels(raw):
     page = story_page_id(raw)
     articles = {}
@@ -119,44 +144,40 @@ def story_publisher_labels(raw):
     for marker in re.finditer(r"self\.__next_f\.push\(", html):
         try:
             chunk, _ = decoder.raw_decode(html, marker.end())
-        except ValueError:
+        except (ValueError, RecursionError):
             continue
         if isinstance(chunk, list) and len(chunk) > 1 and chunk[0] == 1 and isinstance(chunk[1], str):
             chunks.append(chunk[1])
 
-    data = "".join(chunks)
-    for marker in re.finditer(r'"articleSources"\s*:\s*(?=\[)', data):
-        try:
-            sources, _ = decoder.raw_decode(data, marker.end())
-        except ValueError:
+    for source, wire_id in page_source_rows("".join(chunks), decoder):
+        url = source.get("url")
+        if not isinstance(url, str) or not url.startswith(("https://", "http://")):
             continue
-        for source in sources:
-            if not isinstance(source, dict):
-                continue
-            url = source.get("url")
-            if not isinstance(url, str) or not url.startswith(("https://", "http://")):
-                continue
-            info = source.get("sourceInfo")
-            info = info if isinstance(info, dict) else {}
-            paywall = source.get("paywall")
-            owners = info.get("owners")
-            owners = owners if isinstance(owners, list) else []
-            owners = [
-                {key: owner.get(key) for key in ("name", "category")}
-                for owner in owners if isinstance(owner, dict)
-                and (isinstance(owner.get("name"), str) or isinstance(owner.get("category"), str))
-            ]
-            if paywall not in ("yes", "sometimes", "no") and info.get("factuality") not in (
-                "veryLow", "low", "mixed", "high", "veryHigh",
-            ) and not owners:
-                continue
-            articles.setdefault(url, {
-                "url": url, "paywall": paywall, "title": source.get("title"), "date": source.get("date"),
-                "sourceInfo": {
-                    **{key: info.get(key) for key in ("name", "bias", "factuality")},
-                    "owners": owners,
-                },
-            })
+        info = source.get("sourceInfo")
+        info = info if isinstance(info, dict) else {}
+        paywall = source.get("paywall")
+        owners = info.get("owners")
+        owners = owners if isinstance(owners, list) else []
+        owners = [
+            {key: owner.get(key) for key in ("name", "category")}
+            for owner in owners if isinstance(owner, dict)
+            and (isinstance(owner.get("name"), str) or isinstance(owner.get("category"), str))
+        ]
+        if not wire_id and paywall not in ("yes", "sometimes", "no") and info.get("factuality") not in (
+            "veryLow", "low", "mixed", "high", "veryHigh",
+        ) and not owners:
+            continue
+        article = articles.setdefault(url, {
+            "url": url, "paywall": paywall, "title": source.get("title"), "date": source.get("date"),
+            "sourceInfo": {
+                **{key: info.get(key) for key in ("id", "name", "bias", "factuality")},
+                "owners": owners,
+            },
+        })
+        if wire_id and not article.get("wireStoryId"):
+            article["wireStoryId"] = wire_id
+        if source.get("isOriginatingWireSrc") is True:
+            article["isOriginatingWireSrc"] = True
     return {**page, "sources": list(articles.values())[:60]}
 
 
@@ -371,7 +392,7 @@ def run_read(client, args):
         return {**data, "event": coverage(event, args.sources_limit) if event else None}
     if args.command == "paywalls":
         slug = ground_story_slug(args.url)
-        page = client.read("publisher-labels", slug, "/article/" + quote(slug, safe=""), has_id,
+        page = client.read("story-publishers", slug, "/article/" + quote(slug, safe=""), has_id,
                            service="site", parse=story_publisher_labels)
         if page["id"] != args.story_id:
             raise GroundError("no_match", "The Ground News page resolved to a different story.")

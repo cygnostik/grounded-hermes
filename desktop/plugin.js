@@ -3,7 +3,7 @@ import { createElement as h, useEffect, useRef, useState, useSyncExternalStore }
 
 const { host, ROUTES_AREA, SIDEBAR_NAV_AREA, SandboxedFrame } = sdk
 const PATH = '/grounded-news'
-const COVERAGE_VIEWS = ['Overview', 'Articles', 'Bias', 'Factuality', 'Ownership']
+const COVERAGE_VIEWS = ['Overview', 'Articles', 'Bias', 'Factuality', 'Ownership', 'Wire reports']
 const SIDES = [
   ['Left', 'leftPercent', 'leftSrcCount'],
   ['Center', 'centerPercent', 'cntrSrcCount'],
@@ -110,6 +110,8 @@ const css = `
 .gn-source a { font-weight: 650; }
 .gn-detail-top { margin-block: 16px 8px; }
 .gn-views { border-block-end: 1px solid var(--gn-rule); padding-block-end: 9px; }
+.gn-wire summary { cursor: pointer; overflow-wrap: anywhere; }
+.gn-wire summary strong { display: inline; }
 .gn-article-frame { display: block; inline-size: 100%; block-size: clamp(420px, 66vh, 900px); border: 1px solid var(--gn-rule); border-radius: 6px; margin-block-start: 12px; background: white; }
 @container (max-width: 355px) {
   .gn-search input { order: -1; flex-basis: 100%; }
@@ -371,6 +373,8 @@ function originalSource(source) {
     .filter(owner => owner.name || owner.category)
   return {
     href, name: textOnly(info.name) || (href ? new URL(href).hostname : 'Unknown publisher'),
+    publisherId: textOnly(info.id), wireId: textOnly(source.wireStoryId),
+    wireOrigin: source.isOriginatingWireSrc === true,
     title: textOnly(source.title || source.articleTitle || source.headline),
     bias: BIASES[info.bias] || 'Unrated', date: day(source.date), paywall: source.paywall,
     factuality: FACTUALITY_LEVELS.includes(info.factuality) ? info.factuality : null, owners,
@@ -392,9 +396,58 @@ function publisherArticles(story, labeledSources = []) {
       ...existing, title: existing.title || article.title, paywall: article.paywall ?? existing.paywall,
       factuality: article.factuality || existing.factuality,
       owners: article.owners.length ? article.owners : existing.owners,
+      publisherId: article.publisherId || existing.publisherId,
+      wireId: article.wireId || existing.wireId,
+      wireOrigin: article.wireOrigin || existing.wireOrigin,
     } : article)
   }
   return [...articles.values()]
+}
+
+function sharedWireReports(articles) {
+  const reports = new Map()
+  for (const article of articles) {
+    if (!article.wireId) continue
+    if (!reports.has(article.wireId)) reports.set(article.wireId, [])
+    reports.get(article.wireId).push(article)
+  }
+  const hostname = article => new URL(article.href).hostname.replace(/^www\./i, '')
+  return [...reports].map(([id, articles]) => {
+    const identified = articles.filter(article => article.publisherId)
+    const identifiedHosts = new Set(identified.map(hostname))
+    const unidentifiedHosts = new Set(articles.filter(article => !article.publisherId)
+      .map(hostname).filter(host => !identifiedHosts.has(host)))
+    const outletCount = new Set(identified.map(article => article.publisherId)).size + unidentifiedHosts.size
+    return { id, outletCount, articles }
+  }).filter(report => report.outletCount > 1).sort((a, b) => b.outletCount - a.outletCount)
+}
+
+function WireReports({ ctx, allArticles, articles, onOpen }) {
+  const reports = sharedWireReports(allArticles)
+  const shown = new Set(articles.map(article => article.href))
+  return h('section', { className: 'gn-section', 'aria-label': 'Shared wire reports' },
+    h('h3', { className: 'gn-section-title' }, reports.length
+      ? plural(reports.length, 'shared wire report') : 'No shared wire reports in the listed coverage'),
+    h('p', { className: 'gn-meta' },
+      'Ground News wire groups count distinct outlets among the listed articles. Other articles may also be syndicated.'),
+    reports.map(report => {
+      const origin = report.articles.find(article => article.wireOrigin)
+      const title = origin?.title || report.articles.find(article => article.title)?.title || 'Wire report'
+      const visible = report.articles.filter(article => shown.has(article.href))
+      return h('details', { key: report.id, className: 'gn-card gn-wire', open: reports.length === 1 },
+        h('summary', null,
+          h('strong', null, title), ' · ', plural(report.outletCount, 'outlet'), ' · ', plural(report.articles.length, 'article')),
+        visible.length < report.articles.length && h('p', { className: 'gn-meta' },
+          `${visible.length} of ${report.articles.length} links shown with Hide paywalls on`),
+        h('ul', { className: 'gn-list' }, visible.map(article =>
+          h('li', { key: article.href, className: 'gn-source' },
+            h(Link, { ctx, url: article.href, onOpen }, article.name),
+            h('span', { className: 'gn-meta' },
+              [article.title, article.wireOrigin ? 'Originating outlet · Ground News' : ''].filter(Boolean).join(' · ')),
+          ))),
+      )
+    }),
+  )
 }
 
 function publisherRatings(article, dimension) {
@@ -464,11 +517,12 @@ function ArticleView({ ctx, articles, index, onOpen, onList, hidden }) {
   )
 }
 
-function CoverageViews({ ctx, story, articles, initialArticle, hidePaywalled, onPublisherLabels, labels }) {
+function CoverageViews({ ctx, story, allArticles, articles, initialArticle, hidePaywalled, onPublisherLabels, labels }) {
   const [view, setView] = useState(initialArticle ? 'Articles' : 'Overview')
   const [articleUrl, setArticleUrl] = useState(initialArticle)
   const index = articles.findIndex(article => article.href === articleUrl)
   const showRatings = view === 'Factuality' || view === 'Ownership'
+  const showWireReports = view === 'Wire reports'
   const dimension = showRatings ? view.toLowerCase() : 'bias'
   function openArticle(href) {
     setArticleUrl(href)
@@ -479,14 +533,18 @@ function CoverageViews({ ctx, story, articles, initialArticle, hidePaywalled, on
       COVERAGE_VIEWS.map(name => h(Button, {
         key: name, main: name === view, 'aria-pressed': name === view, onClick: () => {
           setView(name)
-          if (name === 'Factuality' || name === 'Ownership') onPublisherLabels()
+          if (['Factuality', 'Ownership', 'Wire reports'].includes(name)) onPublisherLabels()
         },
       }, name))),
     (view === 'Overview' || view === 'Bias') && h(Stats, { story }),
     view === 'Factuality' && h(Ratings, { title: 'Publisher factuality · Ground News', values: story.factuality }),
-    showRatings && h(Notices, { state: labels, loading: 'Checking publisher labels…' }),
-    showRatings && !labels.pending && labels.error &&
+    (showRatings || showWireReports) && h(Notices, { state: labels, loading: 'Checking publisher labels…' }),
+    (showRatings || showWireReports) && !labels.pending && labels.error &&
       h(Button, { onClick: labels.refresh }, 'Retry publisher labels'),
+    showWireReports && !labels.pending && !labels.error &&
+      (labels.value || allArticles.some(article => article.wireId)
+        ? h(WireReports, { ctx, allArticles, articles, onOpen: openArticle })
+        : h('p', { className: 'gn-alert' }, 'Wire-group data is unavailable for this story.')),
     view === 'Ownership' && h(Ratings, { title: 'Publisher ownership · Ground News', values: story.ownership }),
     (view === 'Overview' || view === 'Bias' || showRatings || (view === 'Articles' && index < 0)) &&
       h(Publishers, { key: dimension, ctx, articles, onOpen: openArticle, hidePaywalled, dimension }),
@@ -651,7 +709,7 @@ function Coverage({ ctx, reader, scope, target, compact = false, onBack, backLab
         reader.select(scope, { id: story.id, event: story, read: lastRead, articleUrl })
         host.navigate(PATH)
       } })
-      : h(CoverageViews, { ctx, story, articles, initialArticle: target.articleUrl, hidePaywalled,
+      : h(CoverageViews, { ctx, story, allArticles, articles, initialArticle: target.articleUrl, hidePaywalled,
         onPublisherLabels: () => setLoadPublisherLabels(true), labels: publisherLabels }),
   )
 }
@@ -904,7 +962,7 @@ function View({ ctx, reader, mini }) {
   return h(mini ? MiniPane : NewsPage, { key: scope, ctx, reader, scope })
 }
 
-export { makeReader, preloadChat, promptFor, storyRequest, validUrl }
+export { makeReader, preloadChat, promptFor, sharedWireReports, storyRequest, validUrl }
 
 export default {
   id: 'grounded-hermes',

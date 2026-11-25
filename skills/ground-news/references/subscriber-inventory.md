@@ -10,7 +10,7 @@ Ground documents its universal paywall preference for Premium and Vantage. Both 
 
 After upgrading the test account to Premium, **My News Bias** displayed the personal factuality chart. Media Ownership and Civic Lens still showed Vantage prompts. The story page displayed outlet factuality badges, a distribution, and an **All Factuality** menu. Hermes uses outlet ratings and named owners from the public story page. The personal factuality distribution belongs to the signed-in dashboard. [Ground’s rating methodology](https://ground.news/rating-system)
 
-The public story page also exposed outlet locations, individual bias assessments from named reviewers and reference links, article language, and wire-story groupings. Availability varies by outlet and story. These fields are candidates for showing where coverage comes from and which articles share a wire report.
+The public story page also exposes outlet locations, individual bias assessments from named reviewers and reference links, article language, and wire-story groupings. Availability varies by outlet and story. The Hermes reader uses Ground's wire identifiers to show which listed outlets carry a shared report.
 
 ## Web client
 
