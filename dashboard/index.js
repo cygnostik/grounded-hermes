@@ -1,0 +1,1 @@
+/* Grounded News contributes its interface to Hermes Desktop. */

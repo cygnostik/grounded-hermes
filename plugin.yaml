@@ -1,0 +1,10 @@
+name: grounded-hermes
+version: 0.1.0
+description: Search Ground News on demand, revisit saved stories, and compare publisher coverage.
+provides_tools:
+  - ground_news_search
+  - ground_news_story
+  - ground_news_lookup
+  - ground_news_feed
+  - ground_news_cache
+  - ground_news_blindspots
