@@ -20,6 +20,7 @@ In the examples below, `CLI` stands for `python3 -B /path/to/ground-news/scripts
 | `CLI search interest "Reuters" --limit 2` | Same search with `type: interest`. Examine `subType` and use the matching current interest ID. |
 | `CLI lookup "https://publisher.example/article"` | GET `https://extension.ground.news/search?url=ENCODED`. The result includes Ground's `status`, matching event if available, and any returned source and reference ID. The URL query string is preserved and any fragment is dropped. |
 | `CLI lookup "https://ground.news/article/story-slug"` | Reads the cluster ID from the public story page and uses it to load coverage. Both reads are cached. |
+| `CLI paywalls "https://ground.news/article/story-slug" STORY_ID` | Reads Ground News’s public page classifications for listed articles. Values are `yes`, `sometimes`, or `no`. Missing labels mean unknown. The story ID must match the page. |
 | `CLI story STORY_ID --more-sources --sources-limit 12` | GET `/public/event/{id}/summary`. Optional expansion looks up a listed article URL and checks that the returned story ID matches. |
 | `CLI extension STORY_ID` | Ground's browser-extension popup. Returns the compact story coverage counts and the supplied top sources. |
 | `CLI extension STORY_ID --publisher-id PUBLISHER_ID` | The extension toolbar adds the selected publisher's name, domain and bias label. Use `data.source.id` from a publisher URL lookup, or a matching story source's `sourceInfo.id`. Outlet interest IDs belong to the feed command. |

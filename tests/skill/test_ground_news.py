@@ -89,7 +89,10 @@ class Handler(BaseHTTPRequestHandler):
         path = urlsplit(self.path)
         if path.path == STORY_PAGE:
             return 200, {"Content-Type": "text/html"}, (
-                br'<script>self.__next_f.push([1,"{\"articleId\":\"story-artemis\"}"])</script>'
+                br'<script>self.__next_f.push([1,"{\"articleId\":\"story-artemis\",'
+                br'\"articleSources\":[{\"url\":\"https://example.org/mission\",\"paywall\":\"yes\"},'
+                br'{\"url\":\"https://example.org/free\",\"paywall\":\"no\"},'
+                br'{\"url\":\"https://example.org/unknown\"}]}"])</script>'
             ), 0
         responses = {
             SUMMARY: {"summary": STORY},
@@ -216,6 +219,23 @@ class GroundNewsCLI(unittest.TestCase):
         self.assertEqual(cached["data"], result["data"])
         self.assertEqual([entry["origin"] for entry in cached["reads"]], ["cache", "cache"])
         self.assertEqual([path for path, _, _ in self.server.calls], [STORY_PAGE, SUMMARY])
+
+    def test_paywall_labels_are_public_cached_and_story_scoped(self):
+        url = f"https://ground.news{STORY_PAGE}"
+        result = self.run_cli("paywalls", url, STORY["id"])
+        self.assertEqual(
+            {row["url"]: row["paywall"] for row in result["data"]["sources"]},
+            {"https://example.org/mission": "yes", "https://example.org/free": "no"},
+        )
+        cached = self.run_cli("paywalls", url, STORY["id"], "--cache-only")
+        self.assertEqual(cached["data"], result["data"])
+        self.assertEqual(cached["reads"][0]["origin"], "cache")
+        self.assertEqual(self.run_cli("paywalls", url, "wrong-story", code=1)["error"]["kind"], "no_match")
+        self.assertEqual(
+            self.run_cli("paywalls", "https://example.org/article/artemis", STORY["id"], code=1)["error"]["kind"],
+            "input",
+        )
+        self.assertEqual([path for path, _, _ in self.server.calls], [STORY_PAGE])
 
     def test_feed_trending_editions_and_blindspot_details(self):
         feed = self.run_cli("feed", "feed-id", "--limit", "2", "--details", "2")["data"]

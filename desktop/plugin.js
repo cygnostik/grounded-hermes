@@ -133,10 +133,12 @@ function makeReader(ctx) {
   const selections = new Map()
   const pages = new Map()
   const selectionListeners = new Set()
+  const preferenceListeners = new Set()
+  let hidePaywalled = ctx.storage?.get('hidePaywalled', false) === true
   let revision = 0
   let active = true
 
-  ctx.onDispose(() => { active = false; listeners.clear(); selectionListeners.clear() })
+  ctx.onDispose(() => { active = false; listeners.clear(); selectionListeners.clear(); preferenceListeners.clear() })
   return {
     subscribe(listener) {
       listeners.add(listener)
@@ -153,6 +155,16 @@ function makeReader(ctx) {
       for (const listener of selectionListeners) listener()
     },
     selection: scope => selections.get(scope) || null,
+    subscribePaywalls(listener) {
+      preferenceListeners.add(listener)
+      return () => preferenceListeners.delete(listener)
+    },
+    hidePaywalled: () => hidePaywalled,
+    togglePaywalls() {
+      hidePaywalled = !hidePaywalled
+      ctx.storage?.set('hidePaywalled', hidePaywalled)
+      for (const listener of preferenceListeners) listener()
+    },
     page: scope => pages.get(scope),
     rememberPage(scope, page) { pages.set(scope, page) },
     isActive: () => active,
@@ -355,21 +367,29 @@ function originalSource(source) {
   return {
     href, name: textOnly(info.name) || (href ? new URL(href).hostname : 'Unknown publisher'),
     title: textOnly(source.title || source.articleTitle || source.headline),
-    bias: BIASES[info.bias] || 'Unrated', date: day(source.date),
+    bias: BIASES[info.bias] || 'Unrated', date: day(source.date), paywall: source.paywall,
   }
 }
 
-function publisherArticles(story) {
+function publisherArticles(story, labeledSources = []) {
   const articles = new Map()
   for (const source of Array.isArray(story.sources) ? story.sources : []) {
     if (!source || typeof source !== 'object') continue
     const article = originalSource(source)
     if (article.href && !articles.has(article.href)) articles.set(article.href, article)
   }
+  for (const source of labeledSources) {
+    const article = originalSource(source)
+    if (!article.href) continue
+    const existing = articles.get(article.href)
+    articles.set(article.href, existing ? {
+      ...existing, title: existing.title || article.title, paywall: article.paywall,
+    } : article)
+  }
   return [...articles.values()]
 }
 
-function Publishers({ ctx, articles, compact, onOpen }) {
+function Publishers({ ctx, articles, compact, onOpen, hidePaywalled }) {
   const [bias, setBias] = useState('All')
   const types = [...new Set(articles.map(source => source.bias))]
   const filter = types.includes(bias) ? bias : 'All'
@@ -385,12 +405,14 @@ function Publishers({ ctx, articles, compact, onOpen }) {
     ),
     !compact && articles.length > 0 && h('p', { className: 'gn-meta' },
       `${visible.length} of ${articles.length} listed links shown · Ratings by Ground News`),
-    !visible.length && h('p', { className: 'gn-alert' }, 'No publisher article links in this snapshot.'),
+    !visible.length && h('p', { className: 'gn-alert' }, hidePaywalled
+      ? 'No publisher articles match the current filters.' : 'No publisher article links in this snapshot.'),
     h('ul', { className: 'gn-list' }, visible.map(source =>
       h('li', { key: source.href, className: 'gn-source' },
         h(Link, { ctx, url: source.href, onOpen }, source.title || source.name),
         h('span', { className: 'gn-meta' },
-          [source.title ? source.name : '', source.bias, source.date].filter(Boolean).join(' · ')),
+          [source.title ? source.name : '', source.bias, source.date,
+            hidePaywalled && (source.paywall === 'no' ? 'No paywall reported' : 'Paywall unknown')].filter(Boolean).join(' · ')),
       ))),
   )
 }
@@ -415,7 +437,7 @@ function ArticleView({ ctx, articles, index, onOpen, onList, hidden }) {
   )
 }
 
-function CoverageViews({ ctx, story, articles, initialArticle }) {
+function CoverageViews({ ctx, story, articles, initialArticle, hidePaywalled }) {
   const [view, setView] = useState(initialArticle ? 'Articles' : 'Overview')
   const [articleUrl, setArticleUrl] = useState(initialArticle)
   const index = articles.findIndex(article => article.href === articleUrl)
@@ -432,7 +454,7 @@ function CoverageViews({ ctx, story, articles, initialArticle }) {
     view === 'Factuality' && h(Ratings, { title: 'Publisher factuality · Ground News', values: story.factuality }),
     view === 'Ownership' && h(Ratings, { title: 'Publisher ownership · Ground News', values: story.ownership }),
     (view === 'Overview' || view === 'Bias' || (view === 'Articles' && index < 0)) &&
-      h(Publishers, { ctx, articles, onOpen: openArticle }),
+      h(Publishers, { ctx, articles, onOpen: openArticle, hidePaywalled }),
     index >= 0 && h(ArticleView, {
       ctx, articles, index, onOpen: openArticle, onList: () => setArticleUrl(null), hidden: view !== 'Articles',
     }),
@@ -537,7 +559,14 @@ function Coverage({ ctx, reader, scope, target, compact = false, onBack, backLab
   const story = original.expandedCoverage || original
   const lastRead = currentRead || lastStory?.read || target.read || target.cache
   const expansionError = original.expansionError
-  const articles = publisherArticles(story)
+  const hidePaywalled = useSyncExternalStore(reader.subscribePaywalls, reader.hidePaywalled)
+  const groundUrl = validUrl(story.groundUrl)
+  const paywalls = useRead(reader, scope, hidePaywalled && groundUrl && story.id ? 'paywalls' : null,
+    { url: groundUrl, story_id: story.id })
+  const labels = Array.isArray(paywalls.value?.data?.sources) ? paywalls.value.data.sources : []
+  const allArticles = publisherArticles(story, hidePaywalled ? labels : undefined)
+  const articles = hidePaywalled
+    ? allArticles.filter(article => article.paywall !== 'yes' && article.paywall !== 'sometimes') : allArticles
 
   return h('article', { className: 'gn-section' },
     h('div', { className: 'gn-line gn-spread' },
@@ -556,7 +585,8 @@ function Coverage({ ctx, reader, scope, target, compact = false, onBack, backLab
     compact && h(Stats, { story, compact: true }),
     h('div', { className: 'gn-line gn-section' },
       h(ChatActions, { ctx, reader, scope, story: { ...story, cacheKey: lastRead?.key }, compact }),
-      validUrl(story.groundUrl) && h(Link, { ctx, url: story.groundUrl }, 'Open on Ground News ↗'),
+      groundUrl && h(Link, { ctx, url: groundUrl }, 'Open on Ground News ↗'),
+      h(Button, { disabled: !groundUrl && !hidePaywalled, 'aria-pressed': hidePaywalled, onClick: reader.togglePaywalls }, 'Hide paywalls'),
       compact && h(Button, { onClick: () => { reader.select(scope, target); host.navigate(PATH) } }, 'Compare coverage'),
       !compact && h(Button, {
         disabled: result.pending || !story.id,
@@ -573,12 +603,18 @@ function Coverage({ ctx, reader, scope, target, compact = false, onBack, backLab
         },
       }, 'More publishers'),
     ),
+    hidePaywalled && h('div', { className: 'gn-line gn-section', 'aria-live': 'polite' },
+      h('p', { className: 'gn-meta' }, paywalls.pending ? 'Checking Ground News paywall labels…'
+        : labels.length ? `${allArticles.length - articles.length} hidden · Unlabeled articles stay visible`
+          : 'Paywall labels unavailable for this story.'),
+      !paywalls.pending && paywalls.error && h(Button, { onClick: paywalls.refresh }, 'Retry paywall labels'),
+    ),
     compact
-      ? h(Publishers, { ctx, articles, compact: true, onOpen: articleUrl => {
+      ? h(Publishers, { ctx, articles, compact: true, hidePaywalled, onOpen: articleUrl => {
         reader.select(scope, { id: story.id, event: story, read: lastRead, articleUrl })
         host.navigate(PATH)
       } })
-      : h(CoverageViews, { ctx, story, articles, initialArticle: target.articleUrl }),
+      : h(CoverageViews, { ctx, story, articles, initialArticle: target.articleUrl, hidePaywalled }),
   )
 }
 

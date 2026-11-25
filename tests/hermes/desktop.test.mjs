@@ -146,3 +146,19 @@ test('opens exact story IDs and article links through the existing gateway reads
     assert.equal(storyRequest(value), null)
   }
 })
+
+test('shares the paywall preference across reader views and restores it from Desktop storage', () => {
+  const values = new Map()
+  const ctx = { onDispose() {}, storage: values }
+  const reader = makeReader(ctx)
+  const seen = []
+  const unsubscribe = reader.subscribePaywalls(() => seen.push(reader.hidePaywalled()))
+  assert.equal(reader.hidePaywalled(), false)
+  reader.togglePaywalls()
+  assert.deepEqual(seen, [true])
+  assert.equal(makeReader(ctx).hidePaywalled(), true)
+  unsubscribe()
+  reader.togglePaywalls()
+  assert.deepEqual(seen, [true])
+  assert.equal(makeReader(ctx).hidePaywalled(), false)
+})

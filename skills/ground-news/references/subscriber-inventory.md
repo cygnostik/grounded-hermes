@@ -1,6 +1,12 @@
 # Subscriber and personal reading data
 
-Reviewed November 24, 2026. These observations come from Ground’s published website and Firefox extension. The referenced clients describe the requests below. **Signed-in requests, tier enforcement and private response schemas remain untested.** The public story summary already provides publisher links, bias counts, and aggregate factuality and ownership counts where available. A personal reading-history question requires different data from a question about a story’s coverage. [Subscription features](https://help.ground.news/en/articles/648513)
+Reviewed November 24, 2026. These observations come from Ground’s website and Firefox extension. The referenced clients describe the requests below. Private API response schemas and server-side tier enforcement remain unverified. The public story summary provides publisher links, bias counts, and aggregate factuality and ownership counts where available. [Subscription features](https://help.ground.news/en/articles/648513)
+
+## Signed-in web check
+
+A signed-in Pro account showed a personal date range, story and article totals, reading activity controls, and a source list in **My News Bias**. The site displayed upgrade prompts for factuality distribution, ownership, and personal blindspot panels. **My Feed**, **Custom Feeds**, **Saved Stories**, and **Citations** all opened. Saved Stories and Citations were empty in this session. Custom Feeds displayed a create button. Access to saved records, custom-feed creation, and private response fields remains unverified. [My News Bias](https://ground.news/my-news-bias) · [Custom Feeds](https://help.ground.news/en/articles/866177)
+
+Ground documents its universal paywall preference for Premium and Vantage. Both the story’s sort menu and the account’s source filtering preferences displayed a usable hide-paywall control in the tested Pro session. Its effects and persistence were outside the read-only check. Ground’s public story page independently publishes article-level paywall classifications alongside publisher links. Grounded Hermes uses these labels for its own **Hide paywalls** control. [Ground’s paywall filter](https://help.ground.news/en/articles/3523713)
 
 ## Web client
 

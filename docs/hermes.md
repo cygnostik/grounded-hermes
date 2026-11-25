@@ -25,6 +25,7 @@ The default cache is `~/.cache/ground-news`, or `$XDG_CACHE_HOME/ground-news` if
 - Search **Stories** or **Topics & publishers**. Select an interest to open its feed. Recent searches and feeds reuse their existing results while Desktop is open. Use **Refresh results** to request a new snapshot.
 - In the mini pane, enter a headline and press **Search news**. Open a story and click a publisher headline to read it in Hermes. Use **Previous** and **Next** to move between publishers covering the same story. **Open in browser** is available for sites that restrict embedding or require a sign-in.
 - Use **Compare coverage** in the mini pane to open the full view. Switch between **Articles**, **Bias**, **Factuality**, and **Ownership** from the story. The publisher rating filter and **More publishers** help you find other coverage. Ground News calculates bias percentages over the bias-rated subset.
+- **Hide paywalls** applies across stories in Hermes. It uses public Ground News story-page labels to hide links marked paywalled or sometimes paywalled. Unlabeled links stay visible. The same filter applies to **Previous** and **Next** in the article reader.
 - Use **Discuss in new chat** to switch to a fresh Hermes composer with the story ID, a coverage snapshot, and a comparison prompt. The draft is ready for review and manual submission. If the new composer already contains a draft, **Copy chat prompt** in the full view lets you keep it and paste the story where you choose.
 
 ## Agent tools

@@ -162,6 +162,8 @@ def execute(operation, args):
                 options.append("--more-sources")
             key, limit = ("url", 2048) if operation == "lookup" else ("story_id", 120)
             options += ["--", text_arg(args, key, limit)]
+        elif operation == "paywalls":
+            options += ["--", text_arg(args, "url", 2048), text_arg(args, "story_id", 120)]
         elif operation == "feed":
             options += ["--limit", str(int_arg(args, "limit", 5, 1, 20)),
                         "--details", str(int_arg(args, "details", 2, 0, 5))]

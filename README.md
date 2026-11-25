@@ -24,4 +24,4 @@ python3 skills/ground-news/scripts/ground_news.py search story "lunar exploratio
 
 Hermes runs the bundled Python CLI. On a cache miss or refresh, it sends the search, ID, or publisher URL to Ground’s public, undocumented endpoints. Results stay in a shared SQLite cache on the machine running the request. Bias percentages count only outlets Ground has rated.
 
-Public reads work without a Ground account. Signed-in subscriber features are unverified. [Subscriber inventory](skills/ground-news/references/subscriber-inventory.md) · [Ground’s automation terms, §6.1(d)](https://about.ground.news/terms-and-conditions) · [OSINT Map export](integrations/osint-map/README.md) · [Tests](docs/hermes.md#verify-a-checkout)
+Public reads and **Hide paywalls** work without a Ground account. Member data integration is pending. [Subscriber inventory](skills/ground-news/references/subscriber-inventory.md) · [Ground’s automation terms, §6.1(d)](https://about.ground.news/terms-and-conditions) · [OSINT Map export](integrations/osint-map/README.md) · [Tests](docs/hermes.md#verify-a-checkout)

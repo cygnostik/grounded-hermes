@@ -15,6 +15,7 @@ from ground_news_client import coverage, Cache, Client, GroundError, cache_path,
 KINDS = (
     "search-story", "search-interest", "lookup", "story", "interest",
     "feed", "place", "blindspots", "trending", "editions", "extension-popup", "extension-toolbar", "story-link",
+    "paywalls",
 )
 
 
@@ -100,13 +101,54 @@ def story_page_id(raw):
     return {"id": ids.pop().decode("ascii")}
 
 
+def ground_story_slug(url):
+    parsed = urlsplit(url)
+    match = re.fullmatch(r"/article/([^/]+)/?", parsed.path)
+    slug = unquote(match[1]) if match else ""
+    if parsed.hostname not in {"ground.news", "www.ground.news"} or not re.fullmatch(r"[\w-]{1,512}", slug):
+        raise GroundError("input", "Use a Ground News story link from its /article/ page.")
+    return slug
+
+
+def story_paywalls(raw):
+    page = story_page_id(raw)
+    articles = {}
+    decoder = json.JSONDecoder()
+    html = raw.decode("utf-8", errors="replace")
+    chunks = []
+    for marker in re.finditer(r"self\.__next_f\.push\(", html):
+        try:
+            chunk, _ = decoder.raw_decode(html, marker.end())
+        except ValueError:
+            continue
+        if isinstance(chunk, list) and len(chunk) > 1 and chunk[0] == 1 and isinstance(chunk[1], str):
+            chunks.append(chunk[1])
+
+    data = "".join(chunks)
+    for marker in re.finditer(r'"articleSources"\s*:\s*(?=\[)', data):
+        try:
+            sources, _ = decoder.raw_decode(data, marker.end())
+        except ValueError:
+            continue
+        for source in sources:
+            if not isinstance(source, dict) or source.get("paywall") not in ("yes", "sometimes", "no"):
+                continue
+            url = source.get("url")
+            if not isinstance(url, str) or not url.startswith(("https://", "http://")):
+                continue
+            info = source.get("sourceInfo")
+            info = info if isinstance(info, dict) else {}
+            articles.setdefault(url, {
+                "url": url, "paywall": source["paywall"], "title": source.get("title"), "date": source.get("date"),
+                "sourceInfo": {key: info.get(key) for key in ("name", "bias")},
+            })
+    return {**page, "sources": list(articles.values())[:60]}
+
+
 def lookup(client, url):
     parsed = urlsplit(url)
     if parsed.hostname in {"ground.news", "www.ground.news"}:
-        match = re.fullmatch(r"/article/([^/]+)/?", parsed.path)
-        slug = unquote(match[1]) if match else ""
-        if not re.fullmatch(r"[\w-]{1,512}", slug):
-            raise GroundError("input", "Use a Ground News story link from its /article/ page.")
+        slug = ground_story_slug(url)
         page = client.read("story-link", slug, "/article/" + quote(slug, safe=""), has_id,
                            service="site", parse=story_page_id)
         summary = read_story(client, page["id"], None)
@@ -261,6 +303,10 @@ def build_parser():
     cmd.add_argument("url", type=article_url)
     cmd.add_argument("--sources-limit", type=bounded_int(0, 500), default=8)
 
+    cmd = sub.add_parser("paywalls", parents=[common], help="read public paywall labels for a Ground News story")
+    cmd.add_argument("url", type=article_url)
+    cmd.add_argument("story_id", type=identifier)
+
     cmd = sub.add_parser("story", parents=[common], help="read coverage and publisher links")
     cmd.add_argument("story_id", type=identifier)
     cmd.add_argument("--sources-limit", type=bounded_int(0, 500), default=8)
@@ -308,6 +354,13 @@ def run_read(client, args):
         data = lookup(client, args.url)
         event = data.get("event")
         return {**data, "event": coverage(event, args.sources_limit) if event else None}
+    if args.command == "paywalls":
+        slug = ground_story_slug(args.url)
+        page = client.read("paywalls", slug, "/article/" + quote(slug, safe=""), has_id,
+                           service="site", parse=story_paywalls)
+        if page["id"] != args.story_id:
+            raise GroundError("no_match", "The Ground News page resolved to a different story.")
+        return page
     if args.command == "story":
         return story(client, args)
     if args.command == "extension":
