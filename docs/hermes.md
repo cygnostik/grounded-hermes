@@ -40,6 +40,8 @@ Read tools default to the existing cache and accept `cache_only` or `refresh` as
 
 ## Verify a checkout
 
+For all CLI, Hermes, and map fixture suites, run `uv run --no-project --with fastapi --with httpx make test` from the repository root with Python, Node.js, Make, and uv available. The optional OSINT Map compatibility check also needs `OSINT_MAP_CHECKOUT`.
+
 Run these from the repository root. The Python suite seeds a temporary cache and exercises the agent entry point and the Desktop REST router. The Node suite checks the Desktop registration, topic reuse, and draft handoff.
 
 ```sh
@@ -49,3 +51,9 @@ hermes plugins validate .
 ```
 
 In Desktop, search for a headline, open a result, and check that it appears in **Saved stories**. Open it in the pane and switch to **Compare coverage**. Verify that **Discuss in new chat** fills an empty composer and preserves a composer with an unsent draft.
+
+## Marketplace listing
+
+The catalog requires a publicly cloneable HTTPS repository. For a Grounded Hermes release, the owner or a major contributor submits `plugin-catalog/grounded-hermes.yaml` to `NousResearch/hermes-agent` with the full 40-character commit SHA, the six tools above, and a tested Hermes version floor matching the manifest. Use `Grounded Hermes` as the display title, `community` as the tier, and `desktop` as the category. Run `hermes plugins validate . --install-deps` on the release checkout. Include UI screenshots and disclose requests to Ground, local cache access, and the bundled CLI subprocess in the PR. A maintainer’s merge creates the listing. [Submission guide](https://hermes-agent.nousresearch.com/docs/developer-guide/plugins/catalog-submission)
+
+Use [Please Stand By](images/please-stand-by.jpg) for the catalog’s `image` field (1200 × 600). Put the [coverage reader](images/coverage-reader.png) and [chat pane](images/chat-pane.png) in `screenshots`, which accepts up to six images. Use HTTPS GitHub-hosted image URLs pinned to the release SHA. The Marketplace also renders the README from that commit, including its *Evening Spin* header. [Catalog entry schema](https://github.com/NousResearch/hermes-agent/blob/main/plugin-catalog/README.md#entry-schema)
